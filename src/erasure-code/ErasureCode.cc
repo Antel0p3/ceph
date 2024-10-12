@@ -155,7 +155,7 @@ int ErasureCode::encode_prepare(const bufferlist &raw,
   unsigned blocksize = get_chunk_size(raw.length());
   unsigned padded_chunks = k - raw.length() / blocksize;
   bufferlist prepared = raw;
-
+  printf("[encode prepare] raw.length: %d, blocksize: %d\n", raw.length(), blocksize);
   for (unsigned int i = 0; i < k - padded_chunks; i++) {
     bufferlist &chunk = encoded[chunk_index(i)];
     chunk.substr_of(prepared, i * blocksize, blocksize);
@@ -176,9 +176,12 @@ int ErasureCode::encode_prepare(const bufferlist &raw,
       encoded[chunk_index(i)].push_back(std::move(buf));
     }
   }
+  // unsigned int bytes_per_cell = 16;
+  // int extras[3] = {2, 0, 2};
   for (unsigned int i = k; i < k + m; i++) {
     bufferlist &chunk = encoded[chunk_index(i)];
     chunk.push_back(buffer::create_aligned(blocksize, SIMD_ALIGN));
+    // chunk.push_back(buffer::create_aligned(blocksize + extras[i-k] * bytes_per_cell, SIMD_ALIGN));
   }
 
   return 0;
@@ -225,6 +228,7 @@ int ErasureCode::_decode(const set<int> &want_to_read,
   unsigned int k = get_data_chunk_count();
   unsigned int m = get_chunk_count() - k;
   unsigned blocksize = (*chunks.begin()).second.length();
+  printf("[decode] blocksize: %d\n", blocksize);
   for (unsigned int i =  0; i < k + m; i++) {
     if (chunks.find(i) == chunks.end()) {
       bufferlist tmp;

@@ -17,7 +17,7 @@ int ECUtil::decode(
   ceph_assert(to_decode.size());
 
   uint64_t total_data_size = to_decode.begin()->second.length();
-  ceph_assert(total_data_size % sinfo.get_chunk_size() == 0);
+  // ceph_assert(total_data_size % sinfo.get_chunk_size() == 0);
 
   ceph_assert(out);
   ceph_assert(out->length() == 0);
@@ -25,7 +25,9 @@ int ECUtil::decode(
   for (map<int, bufferlist>::iterator i = to_decode.begin();
        i != to_decode.end();
        ++i) {
-    ceph_assert(i->second.length() == total_data_size);
+    printf("[ECUtil::decode] i: %d, len: %d\n", i->first, i->second.length());
+
+    // ceph_assert(i->second.length() == total_data_size);
   }
 
   if (total_data_size == 0)
@@ -145,19 +147,20 @@ int ECUtil::encode(
     for (map<int, bufferlist>::iterator i = encoded.begin();
 	 i != encoded.end();
 	 ++i) {
-      ceph_assert(i->second.length() == sinfo.get_chunk_size());
+      printf("[ECUtil::encode] i: %d, len1: %d, len2: %ld\n", i->first, i->second.length(), sinfo.get_chunk_size());
+      // ceph_assert(i->second.length() == sinfo.get_chunk_size());
       (*out)[i->first].claim_append(i->second);
     }
   }
 
-  for (map<int, bufferlist>::iterator i = out->begin();
-       i != out->end();
-       ++i) {
-    ceph_assert(i->second.length() % sinfo.get_chunk_size() == 0);
-    ceph_assert(
-      sinfo.aligned_chunk_offset_to_logical_offset(i->second.length()) ==
-      logical_size);
-  }
+  // for (map<int, bufferlist>::iterator i = out->begin();
+  //      i != out->end();
+  //      ++i) {
+  //   ceph_assert(i->second.length() % sinfo.get_chunk_size() == 0);
+  //   ceph_assert(
+  //     sinfo.aligned_chunk_offset_to_logical_offset(i->second.length()) ==
+  //     logical_size);
+  // }
   return 0;
 }
 

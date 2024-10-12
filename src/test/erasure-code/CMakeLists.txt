@@ -176,8 +176,21 @@ target_link_libraries(unittest_erasure_code_jerasure
   ec_jerasure
   )
 
+# unittest_erasure_code_twotone
+add_executable(unittest_erasure_code_twotone
+  TestErasureCodeTwotone.cc
+  $<TARGET_OBJECTS:unit-main>
+  )
+add_ceph_unittest(unittest_erasure_code_twotone)
+target_link_libraries(unittest_erasure_code_twotone
+  global
+  ceph-common
+  ec_twotone
+  )
+
 include_directories(${CMAKE_SOURCE_DIR}/src/erasure-code/jerasure)
 include_directories(${CMAKE_SOURCE_DIR}/src/erasure-code/shec)
+include_directories(${CMAKE_SOURCE_DIR}/src/erasure-code/twotone)
 
 # unittest_erasure_code_shec
 add_executable(unittest_erasure_code_shec
