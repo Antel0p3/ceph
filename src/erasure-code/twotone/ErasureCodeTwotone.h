@@ -3,6 +3,11 @@
 
 #include "erasure-code/ErasureCode.h"
 
+struct TwotoneLayout {
+  std::vector<size_t> max_shift;          // per parity
+  std::vector<size_t> shift;              // p*k + d
+};
+
 class ErasureCodeTwotone : public ceph::ErasureCode {
 public:
   int k;
@@ -11,6 +16,7 @@ public:
   std::string DEFAULT_M;
   int w;
   std::string DEFAULT_W;
+  TwotoneLayout layout;
 
   ErasureCodeTwotone() :
     k(0),

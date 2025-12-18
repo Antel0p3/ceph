@@ -34,7 +34,6 @@ static ostream& _prefix(std::ostream* _dout)
   return *_dout << "ErasureCodeTwotone: ";
 }
 
-
 int ErasureCodeTwotone::init(ErasureCodeProfile& profile, ostream *ss)
 {
   int err = 0;
@@ -50,10 +49,9 @@ int ErasureCodeTwotone::parse(ErasureCodeProfile &profile,
 {
   int err = ErasureCode::parse(profile, ss);
   err |= to_int("k", profile, &k, DEFAULT_K, ss);
-  m = k;
-  // err |= to_int("m", profile, &m, DEFAULT_M, ss);
+  err |= to_int("m", profile, &m, DEFAULT_M, ss);
   // err |= to_int("w", profile, &w, DEFAULT_W, ss);
-  dout(10) << "k set to " << k << ", m set equal to k" << dendl;
+  dout(10) << "k set to " << k << "m set to " << m << dendl;
   // if (chunk_mapping.size() > 0 && (int)chunk_mapping.size() != k + m) {
   //   *ss << "mapping " << profile.find("mapping")->second
 	// << " maps " << chunk_mapping.size() << " chunks instead of"
@@ -68,51 +66,76 @@ int ErasureCodeTwotone::parse(ErasureCodeProfile &profile,
 unsigned int ErasureCodeTwotone::get_chunk_size(unsigned int object_size) const
 {
   // unsigned alignment = get_alignment();
-  unsigned all_cell_num = UPTO_K(UPTO_K(object_size * BYTESIZE, CELLSIZE) / CELLSIZE, k);
+  unsigned cell_num = UPTO_K(object_size * BYTESIZE, CELLSIZE) / CELLSIZE;  // round obj size to the multiple of 16bytes (each line)
+  unsigned all_cell_num = UPTO_K(cell_num, k);     // round cell_num to be the multiple of k so all k chunks have the same size
   unsigned padded_length = all_cell_num * BYTE_PERCELL;
-  // unsigned line_cell_num = all_cell_num / k;
-  // printf("line_cell_num: %u\n", all_cell_num / k);
-  // unsigned tail = object_size % alignment;
-  // unsigned padded_length = object_size + ( tail ?  ( alignment - tail ) : 0 );
   ceph_assert(padded_length % k == 0);
-  return padded_length / k;
+  return padded_length / k;    // bits per chunk
+}
+
+static size_t twotone_shift(int p, int d, int k, int m) {
+    int dd = (m % 2 == 1) ? (m + 1) / 2 : (m / 2);
+    int pp = m - 1 - p;
+    if (pp < dd) {
+        return (dd - 1 - pp) * (k - 1 - d);
+    } else {
+        return (pp - dd + 1) * d;
+    }
+}
+
+static TwotoneLayout build_layout(int k, int m) {
+  TwotoneLayout L;
+  L.max_shift.resize(m, 0);
+  L.shift.resize(k * m);
+
+  for (int p = 0; p < m; ++p) {
+    for (int d = 0; d < k; ++d) {
+      size_t s = twotone_shift(p, d, k, m);
+      L.shift[p * k + d] = s;
+      L.max_shift[p] = std::max(L.max_shift[p], s);
+    }
+  }
+  return L;
 }
 
 int ErasureCodeTwotone::encode_chunks(const set<int> &want_to_encode,
-				       map<int, bufferlist> *encoded)
+                                      map<int, bufferlist> *encoded)
 {
-  // add extra cells to encoded chunks
-  unsigned int bytes_per_cell = 16;
-  int base_block_size = (*encoded)[0].length();
-  int extras[3] = {2, 0, 2};
-  for (int i = k; i < k + m; i++) {
-    (*encoded)[i].clear();
-    (*encoded)[i].push_back(buffer::create_aligned(base_block_size + extras[i-k] * bytes_per_cell, 32));
+  size_t base_block_size = (*encoded)[0].length();
+  size_t cell_num  = base_block_size / BYTE_PERCELL;
+
+  char* chunks[k + m];
+  for (int i = 0; i < k; ++i)
+    chunks[i] = (*encoded)[i].c_str();
+
+  for (int p = 0; p < m; ++p) {
+    size_t cells = cell_num + layout.max_shift[p];
+    size_t bytes = cells * BYTE_PERCELL;
+
+    (*encoded)[k + p].clear();
+    (*encoded)[k + p].push_back(buffer::create_aligned(bytes, SIMD_ALIGN));
+
+    chunks[k + p] = (*encoded)[k + p].c_str();
   }
 
-  char *chunks[k + m];
-  for (int i = 0; i < k + m; i++) {
-    chunks[i] = (*encoded)[i].c_str();
-    printf("%d: %d: \n", i, (*encoded)[i].length());
-    for (int j = 0; j < base_block_size; j++)
-    {
-      printf("%02x ", (*encoded)[i].c_str()[j]);
-    }
-    printf("\n\n");
-  }
-  twotone_encode(&chunks[0], &chunks[k], base_block_size);
+  twotone_encode(chunks, chunks + k, base_block_size);
+
+  // Optional: debug print after encoding
   printf("\n\n[encode_chunks] after encoding:::\n\n");
-  for (int i = k; i < k + m; i++) {
-    chunks[i] = (*encoded)[i].c_str();
-    printf("%d: %d: \n", i, (*encoded)[i].length());
-    for (int j = 0; j < int((*encoded)[i].length()); j++)
-    {
-      printf("%02x ", (*encoded)[i].c_str()[j]);
-    }
-    printf("\n\n");
+  for (int i = 0; i < k + m; ++i) {
+      printf("%d: length=%u\n", i, (*encoded)[i].length());
+      for (unsigned j = 0; j < (*encoded)[i].length(); ++j) {
+          printf("%02x ", (unsigned char)(*encoded)[i].c_str()[j]);
+          if ((j+1) % 16 == 0) {
+            printf("\n");
+          }
+      }
+      printf("\n\n");
   }
+
   return 0;
 }
+
 
 int ErasureCodeTwotone::decode_chunks(const set<int> &want_to_read,
 				       const map<int, bufferlist> &chunks,
@@ -125,13 +148,12 @@ int ErasureCodeTwotone::decode_chunks(const set<int> &want_to_read,
   char *coding[m];
 
   // resize
-  unsigned int bytes_per_cell = 16;
   int extras[3] = {2, 0, 2};
-  blocksize = blocksize - extras[0] * bytes_per_cell;
+  blocksize = blocksize - extras[0] * BYTE_PERCELL;
   for (int i = 0; i < k; i++)
   {
     (*decoded)[i].clear();
-    (*decoded)[i].push_back(buffer::create_aligned(blocksize, 32));
+    (*decoded)[i].push_back(buffer::create_aligned(blocksize, SIMD_ALIGN));
   }
 
   for (int i =  0; i < k + m; i++) {
@@ -158,71 +180,6 @@ void puthex(void* con, int size) {
     printf("%02x ", ((char*)con)[i]);
   }
   printf("\n");
-}
-
-void encodek3(long line_cell_num, char **data, char **coding)
-{
-    __uint128_t *arrayk3[3];
-    __uint128_t *res_array;
-    arrayk3[0] = (__uint128_t *)calloc(line_cell_num + 2, CELLSIZE);
-    arrayk3[1] = (__uint128_t *)calloc(line_cell_num + 2, CELLSIZE);
-    arrayk3[2] = (__uint128_t *)calloc(line_cell_num + 2, CELLSIZE);
-    res_array = (__uint128_t *)calloc(line_cell_num + 2, CELLSIZE);
-    // fread(arrayk3[0], sizeof(__uint128_t), line_cell_num, data[0]);
-    // fread(arrayk3[1] + 1, sizeof(__uint128_t), line_cell_num, data[1]);
-    // fread(arrayk3[2] + 2, sizeof(__uint128_t), line_cell_num, data[2]);
-    memcpy(arrayk3[0] + 0, data[0], sizeof(__uint128_t)*line_cell_num);
-    memcpy(arrayk3[1] + 1, data[1], sizeof(__uint128_t)*line_cell_num);
-    memcpy(arrayk3[2] + 2, data[2], sizeof(__uint128_t)*line_cell_num);
-    for (int i = 0; i < line_cell_num + 2; i++)
-        res_array[i] = arrayk3[0][i] ^ arrayk3[1][i] ^ arrayk3[2][i];
-    memcpy(coding[0], res_array, (line_cell_num + 2) * BYTE_PERCELL);
-    puthex(res_array, (line_cell_num + 2) * BYTE_PERCELL);
-
-    free(arrayk3[0]);
-    free(arrayk3[1]);
-    free(arrayk3[2]);
-
-    arrayk3[0] = (__uint128_t *)calloc(line_cell_num, CELLSIZE);
-    arrayk3[1] = (__uint128_t *)calloc(line_cell_num, CELLSIZE);
-    arrayk3[2] = (__uint128_t *)calloc(line_cell_num, CELLSIZE);
-    res_array = (__uint128_t *)calloc(line_cell_num, CELLSIZE);
-
-    // fread(arrayk3[0], sizeof(__uint128_t), line_cell_num, data[0]);
-    // fread(arrayk3[1], sizeof(__uint128_t), line_cell_num, data[1]);
-    // fread(arrayk3[2], sizeof(__uint128_t), line_cell_num, data[2]);
-    memcpy(arrayk3[0], data[0], sizeof(__uint128_t)*line_cell_num);
-    memcpy(arrayk3[1], data[1], sizeof(__uint128_t)*line_cell_num);
-    memcpy(arrayk3[2], data[2], sizeof(__uint128_t)*line_cell_num);
-
-    for (int i = 0; i < line_cell_num; i++)
-        res_array[i] = arrayk3[0][i] ^ arrayk3[1][i] ^ arrayk3[2][i];
-    memcpy(coding[1], res_array, line_cell_num * BYTE_PERCELL);
-    puthex(res_array, line_cell_num * BYTE_PERCELL);
-    // fwrite(res_array, sizeof(__uint128_t), line_cell_num, res_file);
-    free(arrayk3[0]);
-    free(arrayk3[1]);
-    free(arrayk3[2]);
-    free(res_array);
-
-    arrayk3[0] = (__uint128_t *)calloc(line_cell_num + 2, CELLSIZE);
-    arrayk3[1] = (__uint128_t *)calloc(line_cell_num + 2, CELLSIZE);
-    arrayk3[2] = (__uint128_t *)calloc(line_cell_num + 2, CELLSIZE);
-    res_array = (__uint128_t *)calloc(line_cell_num + 2, CELLSIZE);
-    // fread(arrayk3[0] + 2, sizeof(__uint128_t), line_cell_num, data[0]);
-    // fread(arrayk3[1] + 1, sizeof(__uint128_t), line_cell_num, data[1]);
-    // fread(arrayk3[2], sizeof(__uint128_t), line_cell_num, data[2]);
-    memcpy(arrayk3[0] + 2, data[0], sizeof(__uint128_t)*line_cell_num);
-    memcpy(arrayk3[1] + 1, data[1], sizeof(__uint128_t)*line_cell_num);
-    memcpy(arrayk3[2] + 0, data[2], sizeof(__uint128_t)*line_cell_num);
-    for (int i = 0; i < line_cell_num + 2; i++)
-        res_array[i] = arrayk3[0][i] ^ arrayk3[1][i] ^ arrayk3[2][i];
-    memcpy(coding[2], res_array, (line_cell_num + 2) * BYTE_PERCELL);
-    puthex(res_array, (line_cell_num + 2) * BYTE_PERCELL);
-    free(arrayk3[0]);
-    free(arrayk3[1]);
-    free(arrayk3[2]);
-    free(res_array);
 }
 
 void decodek3(long line_cell_num, char **data, char **coding)
@@ -285,7 +242,25 @@ void decodek3(long line_cell_num, char **data, char **coding)
 
 void ErasureCodeTwotoneImpl::twotone_encode(char **data, char **coding, int blocksize)
 {
-  encodek3(blocksize / BYTE_PERCELL, data, coding);
+  const size_t cell_num = blocksize / BYTE_PERCELL;
+
+  for (int p = 0; p < m; ++p) {
+    size_t out_cells = cell_num + layout.max_shift[p];
+    __uint128_t* out = reinterpret_cast<__uint128_t*>(coding[p]);
+
+    memset(out, 0, out_cells * sizeof(__uint128_t));
+
+    for (int d = 0; d < k; ++d) {
+      size_t shift = layout.shift[p * k + d];
+      __uint128_t* src = reinterpret_cast<__uint128_t*>(data[d]);
+      __uint128_t* dst = out + shift;
+
+      // tight XOR loop, vectorizable
+      for (size_t i = 0; i < cell_num; ++i) {
+        dst[i] ^= src[i];
+      }
+    }
+  }
 }
 
 int ErasureCodeTwotoneImpl::twotone_decode(int *erasures, char **data, char **coding, int blocksize)
@@ -300,7 +275,7 @@ unsigned ErasureCodeTwotoneImpl::get_alignment() const {
 
 void ErasureCodeTwotoneImpl::prepare()
 {
-  
+  layout = build_layout(k, m);
 }
 
 int ErasureCodeTwotoneImpl::parse(ErasureCodeProfile &profile,
