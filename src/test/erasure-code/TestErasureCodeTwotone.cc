@@ -125,12 +125,13 @@ TYPED_TEST(ErasureCodeTest, encode23)
 				 &encoded));
 }
 
-/*
-TYPED_TEST(ErasureCodeTest, encode_decode)
+
+TYPED_TEST(ErasureCodeTest, encode_decode_33)
 {
   TypeParam twotone;
   ErasureCodeProfile profile;
   profile["k"] = "3";
+  profile["m"] = "3";
   twotone.init(profile, &cerr);
 
 #define LARGE_ENOUGH 2048
@@ -138,7 +139,6 @@ TYPED_TEST(ErasureCodeTest, encode_decode)
     in_ptr.zero();
     in_ptr.set_length(0);
     const char *payload =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     in_ptr.append(payload, strlen(payload));
@@ -162,13 +162,13 @@ TYPED_TEST(ErasureCodeTest, encode_decode)
     // all data chunks missing 
     {
       map<int, bufferlist> degraded = encoded;
-      degraded.erase(0);
-      degraded.erase(1);
-      degraded.erase(2);
+      degraded.erase(3);
+      degraded.erase(4);
+      degraded.erase(5);
       EXPECT_EQ(3u, degraded.size());
-      int want_to_decode[] = { 0, 1, 2 };
+      int want_to_decode[] = { 0, 1, 2, 3, 4, 5 };
       map<int, bufferlist> decoded;
-      EXPECT_EQ(0, twotone._decode(set<int>(want_to_decode, want_to_decode+3),
+      EXPECT_EQ(0, twotone._decode(set<int>(want_to_decode, want_to_decode+6),
 				    degraded,
 				    &decoded));
       // always decode all, regardless of want_to_decode
@@ -180,4 +180,129 @@ TYPED_TEST(ErasureCodeTest, encode_decode)
 			  in.length() - 2 * length));
     }
 }
-*/
+
+TYPED_TEST(ErasureCodeTest, encode_decode_32)
+{
+  TypeParam twotone;
+  ErasureCodeProfile profile;
+  profile["k"] = "3";
+  profile["m"] = "2";
+  twotone.init(profile, &cerr);
+
+#define LARGE_ENOUGH 2048
+  bufferptr in_ptr(buffer::create_page_aligned(LARGE_ENOUGH));
+    in_ptr.zero();
+    in_ptr.set_length(0);
+    const char *payload =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    in_ptr.append(payload, strlen(payload));
+    bufferlist in;
+    in.push_back(in_ptr);
+    int want_to_encode[] = { 0, 1, 2, 3, 4 };
+    map<int, bufferlist> encoded;
+
+    EXPECT_EQ(0, twotone.encode(set<int>(want_to_encode, want_to_encode+5),
+				 in,
+				 &encoded));
+
+    unsigned length = encoded[0].length();
+    EXPECT_EQ(5u, encoded.size());
+    
+    EXPECT_EQ(0, memcmp(encoded[0].c_str(), in.c_str(), length));
+    EXPECT_EQ(0, memcmp(encoded[1].c_str(), in.c_str() + length, length));
+    EXPECT_EQ(0, memcmp(encoded[2].c_str(), in.c_str() + 2 * length,
+			in.length() - 2 * length));
+    
+    // all data chunks missing 
+    {
+      map<int, bufferlist> degraded = encoded;
+      degraded.erase(2);
+      degraded.erase(4);
+      // degraded.erase(4);
+      EXPECT_EQ(3u, degraded.size());
+      int want_to_decode[] = { 0, 1, 2, 3, 4 };
+      map<int, bufferlist> decoded;
+      EXPECT_EQ(0, twotone._decode(set<int>(want_to_decode, want_to_decode+5),
+				    degraded,
+				    &decoded));
+      // always decode all, regardless of want_to_decode
+      EXPECT_EQ(5u, decoded.size()); 
+      EXPECT_EQ(length, decoded[0].length());
+      EXPECT_EQ(0, memcmp(decoded[0].c_str(), in.c_str(), length));
+      EXPECT_EQ(0, memcmp(decoded[1].c_str(), in.c_str() + length, length));
+      EXPECT_EQ(0, memcmp(decoded[2].c_str(), in.c_str() + 2 * length,
+			  in.length() - 2 * length));
+    }
+}
+
+TYPED_TEST(ErasureCodeTest, encode_decode_dynamic)
+{
+    TypeParam twotone;
+    ErasureCodeProfile profile;
+    profile["k"] = "3";  // you can change these to any k/m for different tests
+    profile["m"] = "2";
+    twotone.init(profile, &cerr);
+
+    unsigned k = twotone.get_data_chunk_count();
+    unsigned m = twotone.get_chunk_count() - k;
+    unsigned total_chunks = k + m;
+
+    // prepare input buffer
+    #define LARGE_ENOUGH 2048
+    bufferptr in_ptr(buffer::create_page_aligned(LARGE_ENOUGH));
+    in_ptr.zero();
+    in_ptr.set_length(0);
+    const char *payload =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    in_ptr.append(payload, strlen(payload));
+    bufferlist in;
+    in.push_back(in_ptr);
+
+    // dynamically generate want_to_encode set
+    std::set<int> want_to_encode;
+    for (unsigned i = 0; i < total_chunks; ++i) want_to_encode.insert(i);
+
+    map<int, bufferlist> encoded;
+    EXPECT_EQ(0, twotone.encode(want_to_encode, in, &encoded));
+
+    unsigned block_len = encoded[0].length();
+    EXPECT_EQ(total_chunks, encoded.size());
+
+    // check data chunks (dynamic)
+    for (unsigned i = 0; i < k; ++i) {
+        unsigned start = i * block_len;
+        unsigned len = std::min(block_len, (unsigned)(in.length() - start));
+        EXPECT_EQ(0, memcmp(encoded[i].c_str(), in.c_str() + start, len));
+    }
+
+    // simulate missing data chunks (degraded)
+    map<int, bufferlist> degraded = encoded;
+    std::vector<int> missing_indices = {3, 4}; // for example, remove first two data chunks
+    for (auto idx : missing_indices) degraded.erase(idx);
+
+    EXPECT_EQ(total_chunks - missing_indices.size(), degraded.size());
+
+    // dynamically generate want_to_decode set (all chunks)
+    std::set<int> want_to_decode;
+    for (unsigned i = 0; i < total_chunks; ++i) want_to_decode.insert(i);
+
+    map<int, bufferlist> decoded;
+    EXPECT_EQ(0, twotone._decode(want_to_decode, degraded, &decoded));
+
+    EXPECT_EQ(total_chunks, decoded.size());
+
+    // verify all data chunks restored
+    for (unsigned i = 0; i < k; ++i) {
+        unsigned start = i * block_len;
+        EXPECT_EQ(0, memcmp(decoded[i].c_str(), in.c_str() + start, block_len));
+    }
+
+    // optionally verify parity chunks length (reconstructed)
+    for (unsigned i = k; i < total_chunks; ++i) {
+        EXPECT_EQ(encoded[i].length(), decoded[i].length());
+        EXPECT_EQ(0, memcmp(decoded[i].c_str(), encoded[i].c_str(), decoded[i].length()));
+    }
+}

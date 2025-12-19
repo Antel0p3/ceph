@@ -228,7 +228,6 @@ int ErasureCode::_decode(const set<int> &want_to_read,
   unsigned int k = get_data_chunk_count();
   unsigned int m = get_chunk_count() - k;
   unsigned blocksize = (*chunks.begin()).second.length();
-  printf("[decode] blocksize: %d\n", blocksize);
   for (unsigned int i =  0; i < k + m; i++) {
     if (chunks.find(i) == chunks.end()) {
       bufferlist tmp;
