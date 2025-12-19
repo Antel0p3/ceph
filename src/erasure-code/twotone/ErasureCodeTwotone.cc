@@ -259,96 +259,81 @@ void ErasureCodeTwotoneImpl::twotone_encode(char **data, char **coding, int bloc
 
 int ErasureCodeTwotoneImpl::twotone_decode(int *erasures, char **data, char **coding, int blocksize)
 {
-  size_t cell_num = blocksize / BYTE_PERCELL;
+    const size_t cell_num = blocksize / BYTE_PERCELL;
+    std::vector<bool> missing(k + m, false);
 
-  std::vector<bool> chunk_missing(k + m, false);
+    for (int i = 0; erasures[i] != -1; ++i)
+        missing[erasures[i]] = true;
 
-  for (int i = 0; erasures[i] != -1; ++i) {
-    int e = erasures[i];
-    chunk_missing[e] = true;
-  }
+    __uint128_t** D = reinterpret_cast<__uint128_t**>(data);
+    __uint128_t** P = reinterpret_cast<__uint128_t**>(coding);
 
-  __uint128_t** D = reinterpret_cast<__uint128_t**>(data);
-  __uint128_t** P = reinterpret_cast<__uint128_t**>(coding);
+    // Track known cells
+    std::vector<std::vector<bool>> known(k, std::vector<bool>(cell_num, true));
+    for (int d = 0; d < k; ++d)
+        if (missing[d])
+            std::fill(known[d].begin(), known[d].end(), false);
 
-  std::vector<std::vector<bool>> known(k, std::vector<bool>(cell_num, true));
+    // Iteratively reconstruct data cells
+    bool progress = true;
+    while (progress) {
+        progress = false;
+        for (int p = 0; p < m; ++p) {
+            if (missing[k + p]) continue;
+            const size_t parity_cells = cell_num + layout.max_shift[p];
+            __uint128_t* parity = P[p];
 
-  for (int d = 0; d < k; ++d)
-    if (chunk_missing[d])
-      std::fill(known[d].begin(), known[d].end(), false);
+            for (size_t t = 0; t < parity_cells; ++t) {
+                __uint128_t val = parity[t];
+                int unknown_cnt = 0;
+                int u_data = -1;
+                size_t u_off = 0;
 
-  bool progress = true;
+                for (int d = 0; d < k; ++d) {
+                    size_t shift = layout.shift[p * k + d];
+                    if (t < shift) continue;
+                    size_t off = t - shift;
+                    if (off >= cell_num) continue;
 
-  while (progress) {
-    progress = false;
+                    if (known[d][off]) val ^= D[d][off];
+                    else { unknown_cnt++; u_data = d; u_off = off; }
+                }
 
+                if (unknown_cnt == 1) {
+                    D[u_data][u_off] = val;
+                    known[u_data][u_off] = true;
+                    progress = true;
+                }
+            }
+        }
+    }
+
+    // Check all data recovered
+    for (int d = 0; d < k; ++d)
+      for (size_t i = 0; i < cell_num; ++i)
+        if (!known[d][i])
+          return -EIO;
+
+    // Reconstruct missing parity chunks
     for (int p = 0; p < m; ++p) {
-      if (chunk_missing[p+k])
-        continue;
+        if (!missing[k + p]) continue;
+        __uint128_t* parity = P[p];
+        const size_t parity_cells = cell_num + layout.max_shift[p];
 
-      size_t parity_cells = cell_num + layout.max_shift[p];
-      __uint128_t* parity = P[p];
-
-      for (size_t t = 0; t < parity_cells; ++t) {
-        __uint128_t val = parity[t];
-
-        int unknown_cnt = 0;
-        int u_data = -1;
-        size_t u_off = 0;
-
-        for (int d = 0; d < k; ++d) {
-          size_t s = layout.shift[p * k + d];
-          if (t < s)
-            continue;
-
-          size_t off = t - s;
-          if (off >= cell_num)
-            continue;
-
-          if (known[d][off])
-            val ^= D[d][off];
-          else {
-            unknown_cnt++;
-            u_data = d;
-            u_off = off;
-          }
+        for (size_t t = 0; t < parity_cells; ++t) {
+            __uint128_t val = 0;
+            for (int d = 0; d < k; ++d) {
+                size_t shift = layout.shift[p * k + d];
+                if (t < shift) continue;
+                size_t off = t - shift;
+                if (off >= cell_num) continue;
+                val ^= D[d][off];
+            }
+            parity[t] = val;
         }
-
-        if (unknown_cnt == 1) {
-          D[u_data][u_off] = val;
-          known[u_data][u_off] = true;
-          progress = true;
-        }
-      }
     }
-  }
 
-  for (int d = 0; d < k; ++d)
-    for (size_t i = 0; i < cell_num; ++i)
-      if (!known[d][i])
-        return -EIO;
-
-  for (int p = 0; p < m; ++p) {
-    if (!chunk_missing[k+p])
-      continue;
-
-    // reconstruct parity[p] from fully decoded data shards
-    size_t parity_cells = cell_num + layout.max_shift[p];
-    __uint128_t* parity = P[p];
-
-    for (size_t t = 0; t < parity_cells; ++t) {
-      __uint128_t val = 0;
-      for (int d = 0; d < k; ++d) {
-        size_t s = layout.shift[p * k + d];
-        if (t < s) continue;
-        size_t off = t - s;
-        if (off >= cell_num) continue;
-        val ^= D[d][off];
-      }
-      parity[t] = val;
-    }
-  }
-  return 0;
+    return 0;
 }
 
 unsigned ErasureCodeTwotoneImpl::get_alignment() const {
