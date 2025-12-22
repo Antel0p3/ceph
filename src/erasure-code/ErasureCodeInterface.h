@@ -459,6 +459,8 @@ namespace ceph {
      */
     virtual int decode_concat(const std::map<int, bufferlist> &chunks,
 			      bufferlist *decoded) = 0;
+    
+    virtual bool supports_variable_parity_len() const = 0;
   };
 
   typedef std::shared_ptr<ErasureCodeInterface> ErasureCodeInterfaceRef;

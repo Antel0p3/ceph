@@ -58,6 +58,7 @@ public:
   virtual unsigned get_alignment() const = 0;
   virtual void prepare() = 0;
   static bool is_prime(int value);
+  bool supports_variable_parity_len() const override;
 protected:
   virtual int parse(ceph::ErasureCodeProfile &profile, std::ostream *ss);
 };
@@ -82,35 +83,5 @@ public:
 private:
   int parse(ceph::ErasureCodeProfile &profile, std::ostream *ss) override;
 };
-
-// class ErasureCodeTwotoneReedSolomonVandermonde : public ErasureCodeTwotone {
-// public:
-//   int *matrix;
-
-//   ErasureCodeTwotoneReedSolomonVandermonde() :
-//     ErasureCodeTwotone("reed_sol_van"),
-//     matrix(0)
-//   {
-//     DEFAULT_K = "7";
-//     DEFAULT_M = "3";
-//     DEFAULT_W = "8";
-//   }
-//   ~ErasureCodeTwotoneReedSolomonVandermonde() override {
-//     if (matrix)
-//       free(matrix);
-//   }
-
-//   void twotone_encode(char **data,
-//                                char **coding,
-//                                int blocksize) override;
-//   int twotone_decode(int *erasures,
-//                                char **data,
-//                                char **coding,
-//                                int blocksize) override;
-//   unsigned get_alignment() const override;
-//   void prepare() override;
-// private:
-//   int parse(ceph::ErasureCodeProfile& profile, std::ostream *ss) override;
-// };
 
 #endif

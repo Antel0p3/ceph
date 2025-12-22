@@ -25,10 +25,16 @@ static ostream& _prefix(std::ostream* _dout)
   return *_dout << "ErasureCodeTwotone: ";
 }
 
+bool ErasureCodeTwotone::supports_variable_parity_len() const { return true; }
+
 int ErasureCodeTwotone::init(ErasureCodeProfile& profile, ostream *ss)
 {
   int err = 0;
   err |= parse(profile, ss);
+  if (m > k) {
+    err |= -EINVAL;
+    *ss << "m must be <= k for decoding correctness" << std::endl;
+  }
   if (err)
     return err;
   prepare();
@@ -105,6 +111,7 @@ int ErasureCodeTwotone::encode_chunks(const set<int> &want_to_encode,
 
   twotone_encode(chunks, chunks + k, base_block_size);
 
+  bool parity_has_base_size = false;
   // Optional: debug print after encoding
   printf("\n\n[encode_chunks] after encoding:::\n\n");
   for (int i = 0; i < k + m; ++i) {
@@ -116,8 +123,12 @@ int ErasureCodeTwotone::encode_chunks(const set<int> &want_to_encode,
           }
       }
       printf("\n\n");
+      if (i >= k && (*encoded)[i].length() == base_block_size) {
+        parity_has_base_size = true;
+      }
   }
 
+  ceph_assert(parity_has_base_size);
   return 0;
 }
 
@@ -138,13 +149,7 @@ int ErasureCodeTwotone::decode_chunks(const set<int> &want_to_read,
   for (int i = 0; i < k+m; ++i) {
     auto it = chunks.find(i);
     if (it != chunks.end()) {
-      if (i < k) {
-        blocksize = it->second.length();
-      } else {
-        unsigned parity_len = it->second.length();
-        blocksize = parity_len - layout.max_shift[i-k] * BYTE_PERCELL;
-      }
-      break;
+      blocksize = (blocksize < it->second.length()) ? blocksize : it->second.length();
     }
   }
 
@@ -194,6 +199,7 @@ int ErasureCodeTwotone::decode_chunks(const set<int> &want_to_read,
 
       (*decoded)[i].clear();
       (*decoded)[i].push_back(buffer::create_aligned(parity_size, SIMD_ALIGN));
+      printf("[decode_chunks] chunk %d, size: %d\n", i, parity_size);
 
       coding[p] = (*decoded)[i].c_str();
 
