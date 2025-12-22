@@ -199,7 +199,7 @@ int ErasureCodeTwotone::decode_chunks(const set<int> &want_to_read,
 
       (*decoded)[i].clear();
       (*decoded)[i].push_back(buffer::create_aligned(parity_size, SIMD_ALIGN));
-      printf("[decode_chunks] chunk %d, size: %d\n", i, parity_size);
+      // printf("[decode_chunks] chunk %d, size: %d\n", i, parity_size);
 
       coding[p] = (*decoded)[i].c_str();
 
