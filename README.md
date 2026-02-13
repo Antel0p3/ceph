@@ -164,6 +164,14 @@ cluster:
 	../src/vstart.sh --debug --new -x --localhost --bluestore
 	./bin/ceph -s
 
+	MDS=0 MON=1 MGR=1 OSD=7 ../src/vstart.sh -n -x --without-dashboard
+	
+	export PYTHONPATH=/root/ceph/src/pybind:/root/ceph/build/lib/cython_modules/lib.3:/root/ceph/src/python-common:$PYTHONPATH
+	export LD_LIBRARY_PATH=/root/ceph/build/lib:$LD_LIBRARY_PATH
+	export PATH=/root/ceph/build/bin:$PATH
+	alias cephfs-shell=/root/ceph/src/tools/cephfs/cephfs-shell
+	CEPH_DEV=1
+
 Most Ceph commands are available in the `bin/` directory. For example:
 
 	./bin/rbd create foo --size 1000
