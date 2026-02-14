@@ -9,6 +9,38 @@ using ceph::bufferlist;
 using ceph::ErasureCodeInterfaceRef;
 using ceph::Formatter;
 
+#define BYTE_PERCELL (16)
+
+int ECUtil::decode_twotone(
+  const stripe_info_t &sinfo, ErasureCodeInterfaceRef &ec_impl,
+  map<int, bufferlist> &to_decode, bufferlist *out) {
+
+  uint64_t total_data_size = to_decode.begin()->second.length();
+
+  if (total_data_size == 0)
+    return 0;
+
+  unsigned int k = ec_impl->get_data_chunk_count();
+  unsigned int m = ec_impl->get_coding_chunk_count();
+  unsigned int padded_chunk_size = sinfo.get_chunk_size() + m / 2 * (k - 1) * BYTE_PERCELL;
+  
+  for (uint64_t i = 0; i < total_data_size; i += padded_chunk_size) {
+    map<int, bufferlist> chunks;
+    for (map<int, bufferlist>::iterator j = to_decode.begin();
+	 j != to_decode.end();
+	 ++j) {
+      chunks[j->first].substr_of(j->second, i, padded_chunk_size);
+    }
+    bufferlist bl;
+    int r = ec_impl->decode_concat(chunks, &bl);
+    ceph_assert(r == 0);
+    ceph_assert(bl.length() == sinfo.get_stripe_width());
+    out->claim_append(bl);
+  }
+
+  return 0;
+}
+
 int ECUtil::decode(
   const stripe_info_t &sinfo,
   ErasureCodeInterfaceRef &ec_impl,
@@ -21,6 +53,10 @@ int ECUtil::decode(
 
   ceph_assert(out);
   ceph_assert(out->length() == 0);
+
+  if (ec_impl->supports_variable_parity_len()) {
+    return ECUtil::decode_twotone(sinfo, ec_impl, to_decode, out);
+  }
 
   for (map<int, bufferlist>::iterator i = to_decode.begin();
        i != to_decode.end();
@@ -144,6 +180,8 @@ int ECUtil::encode(
     buf.substr_of(in, i, sinfo.get_stripe_width());
     int r = ec_impl->encode(want, buf, &encoded);
     ceph_assert(r == 0);
+
+    // take results out after encoding
     for (map<int, bufferlist>::iterator i = encoded.begin();
 	 i != encoded.end();
 	 ++i) {

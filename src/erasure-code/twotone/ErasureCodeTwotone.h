@@ -6,6 +6,7 @@
 struct TwotoneLayout {
   std::vector<size_t> max_shift;          // per parity
   std::vector<size_t> shift;              // p*k + d
+  size_t global_max_shift;                // bytes
 };
 
 class ErasureCodeTwotone : public ceph::ErasureCode {

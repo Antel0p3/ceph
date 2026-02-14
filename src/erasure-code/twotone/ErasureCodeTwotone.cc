@@ -61,7 +61,7 @@ unsigned int ErasureCodeTwotone::get_chunk_size(unsigned int object_size) const
   unsigned all_cell_num = UPTO_K(cell_num, k);     // round cell_num to be the multiple of k so all k chunks have the same size
   unsigned padded_length = all_cell_num * BYTE_PERCELL;
   ceph_assert(padded_length % k == 0);
-  return padded_length / k;    // bits per chunk
+  return padded_length / k;    // bytes per chunk
 }
 
 static size_t twotone_shift(int p, int d, int k, int m) {
@@ -78,6 +78,7 @@ static TwotoneLayout build_layout(int k, int m) {
   TwotoneLayout L;
   L.max_shift.resize(m, 0);
   L.shift.resize(k * m);
+  L.global_max_shift = m / 2 * (k - 1) * BYTE_PERCELL;
 
   for (int p = 0; p < m; ++p) {
     for (int d = 0; d < k; ++d) {
@@ -93,25 +94,25 @@ int ErasureCodeTwotone::encode_chunks(const set<int> &want_to_encode,
                                       map<int, bufferlist> *encoded)
 {
   size_t base_block_size = (*encoded)[0].length();
-  size_t cell_num  = base_block_size / BYTE_PERCELL;
+  size_t padded_bytes = base_block_size + layout.global_max_shift;
 
   char* chunks[k + m];
-  for (int i = 0; i < k; ++i)
-    chunks[i] = (*encoded)[i].c_str();
+  for (int i = 0; i < k; ++i) {
+    bufferlist& bl = (*encoded)[i];
+    bl.append_zero(padded_bytes - bl.length());  
+    chunks[i] = bl.c_str();
+  }
 
   for (int p = 0; p < m; ++p) {
-    size_t cells = cell_num + layout.max_shift[p];
-    size_t bytes = cells * BYTE_PERCELL;
-
     (*encoded)[k + p].clear();
-    (*encoded)[k + p].push_back(buffer::create_aligned(bytes, SIMD_ALIGN));
-
+    (*encoded)[k + p].push_back(buffer::create_aligned(padded_bytes, SIMD_ALIGN));
+    (*encoded)[k + p].zero();
+    
     chunks[k + p] = (*encoded)[k + p].c_str();
   }
 
   twotone_encode(chunks, chunks + k, base_block_size);
 
-  bool parity_has_base_size = false;
   // Optional: debug print after encoding
   printf("\n\n[encode_chunks] after encoding:::\n\n");
   for (int i = 0; i < k + m; ++i) {
@@ -123,12 +124,8 @@ int ErasureCodeTwotone::encode_chunks(const set<int> &want_to_encode,
           }
       }
       printf("\n\n");
-      if (i >= k && (*encoded)[i].length() == base_block_size) {
-        parity_has_base_size = true;
-      }
   }
 
-  ceph_assert(parity_has_base_size);
   return 0;
 }
 
@@ -143,17 +140,11 @@ int ErasureCodeTwotone::decode_chunks(const set<int> &want_to_read,
   char* coding[m];
 
   /* -------------------------------------------------
-   * Determine correct data blocksize = smallest data shard size present
+   * Determine correct data blocksize = padded_size - max_shift
    * ------------------------------------------------- */
-  unsigned blocksize = UINT_MAX;
-  for (int i = 0; i < k+m; ++i) {
-    auto it = chunks.find(i);
-    if (it != chunks.end()) {
-      blocksize = (blocksize < it->second.length()) ? blocksize : it->second.length();
-    }
-  }
+  unsigned paddedsize = (*chunks.begin()).second.length();
+  unsigned blocksize = paddedsize - layout.global_max_shift;
 
-  ceph_assert(blocksize != UINT_MAX);
   printf("[decode] blocksize: %d\n", blocksize);
 
 

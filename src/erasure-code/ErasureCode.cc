@@ -176,8 +176,7 @@ int ErasureCode::encode_prepare(const bufferlist &raw,
       encoded[chunk_index(i)].push_back(std::move(buf));
     }
   }
-  // unsigned int bytes_per_cell = 16;
-  // int extras[3] = {2, 0, 2};
+  
   for (unsigned int i = k; i < k + m; i++) {
     bufferlist &chunk = encoded[chunk_index(i)];
     chunk.push_back(buffer::create_aligned(blocksize, SIMD_ALIGN));

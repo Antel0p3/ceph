@@ -79,6 +79,12 @@ public:
   }
 };
 
+int decode_twotone(
+  const stripe_info_t &sinfo,
+  ceph::ErasureCodeInterfaceRef &ec_impl,
+  std::map<int, ceph::buffer::list> &to_decode,
+  ceph::buffer::list *out);
+
 int decode(
   const stripe_info_t &sinfo,
   ceph::ErasureCodeInterfaceRef &ec_impl,

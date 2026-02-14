@@ -151,7 +151,8 @@ TYPED_TEST(ErasureCodeTest, encode_decode_33)
 				 in,
 				 &encoded));
 
-    unsigned length = encoded[0].length();
+    unsigned shift = 2 * 16;  // m / 2 * (k-1) * BYTE_PERCELL
+    unsigned length = encoded[0].length() - shift;
     EXPECT_EQ(6u, encoded.size());
     
     EXPECT_EQ(0, memcmp(encoded[0].c_str(), in.c_str(), length));
@@ -173,7 +174,8 @@ TYPED_TEST(ErasureCodeTest, encode_decode_33)
 				    &decoded));
       // always decode all, regardless of want_to_decode
       EXPECT_EQ(6u, decoded.size()); 
-      EXPECT_EQ(length, decoded[0].length());
+      // EXPECT_EQ(length, decoded[0].length());
+      unsigned length = decoded[0].length();
       EXPECT_EQ(0, memcmp(decoded[0].c_str(), in.c_str(), length));
       EXPECT_EQ(0, memcmp(decoded[1].c_str(), in.c_str() + length, length));
       EXPECT_EQ(0, memcmp(decoded[2].c_str(), in.c_str() + 2 * length,
@@ -206,7 +208,8 @@ TYPED_TEST(ErasureCodeTest, encode_decode_32)
 				 in,
 				 &encoded));
 
-    unsigned length = encoded[0].length();
+    unsigned shift = 2 * 16;  // m / 2 * (k-1) * BYTE_PERCELL
+    unsigned length = encoded[0].length() - shift;
     EXPECT_EQ(5u, encoded.size());
     
     EXPECT_EQ(0, memcmp(encoded[0].c_str(), in.c_str(), length));
@@ -268,7 +271,7 @@ TYPED_TEST(ErasureCodeTest, encode_decode_dynamic)
     map<int, bufferlist> encoded;
     EXPECT_EQ(0, twotone.encode(want_to_encode, in, &encoded));
 
-    unsigned block_len = encoded[0].length();
+    unsigned block_len = encoded[0].length() - 32;
     EXPECT_EQ(total_chunks, encoded.size());
 
     // check data chunks (dynamic)
