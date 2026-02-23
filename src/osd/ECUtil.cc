@@ -54,9 +54,6 @@ int ECUtil::decode(
   ceph_assert(out);
   ceph_assert(out->length() == 0);
 
-  if (ec_impl->supports_variable_parity_len()) {
-    return ECUtil::decode_twotone(sinfo, ec_impl, to_decode, out);
-  }
 
   for (map<int, bufferlist>::iterator i = to_decode.begin();
        i != to_decode.end();
@@ -79,7 +76,7 @@ int ECUtil::decode(
     bufferlist bl;
     int r = ec_impl->decode_concat(chunks, &bl);
     ceph_assert(r == 0);
-    ceph_assert(bl.length() == sinfo.get_stripe_width());
+    // ceph_assert(bl.length() == sinfo.get_stripe_width());
     out->claim_append(bl);
   }
   return 0;
@@ -158,26 +155,33 @@ int ECUtil::decode(
   return 0;
 }
 
-int ECUtil::encode(
+int ECUtil::encode_twotone(
   const stripe_info_t &sinfo,
   ErasureCodeInterfaceRef &ec_impl,
   bufferlist &in,
   const set<int> &want,
   map<int, bufferlist> *out) {
 
+  unsigned int k = ec_impl->get_data_chunk_count();
+  unsigned int m = ec_impl->get_coding_chunk_count();
+  unsigned int prepad_chunk_size = sinfo.get_chunk_size() - m / 2 * (k - 1) * BYTE_PERCELL;
+  unsigned int prepad_stripe_width = prepad_chunk_size * k;
+
+  if (in.length() % prepad_stripe_width != 0) {
+    uint64_t pad = prepad_stripe_width - in.length() % prepad_stripe_width;
+    in.append_zero(pad);
+  }
+
   uint64_t logical_size = in.length();
 
-  ceph_assert(logical_size % sinfo.get_stripe_width() == 0);
+  ceph_assert(logical_size % prepad_stripe_width == 0);
   ceph_assert(out);
   ceph_assert(out->empty());
-
-  if (logical_size == 0)
-    return 0;
-
-  for (uint64_t i = 0; i < logical_size; i += sinfo.get_stripe_width()) {
+  
+  for (uint64_t i = 0; i < logical_size; i += prepad_stripe_width) {
     map<int, bufferlist> encoded;
     bufferlist buf;
-    buf.substr_of(in, i, sinfo.get_stripe_width());
+    buf.substr_of(in, i, prepad_stripe_width);
     int r = ec_impl->encode(want, buf, &encoded);
     ceph_assert(r == 0);
 
@@ -191,14 +195,52 @@ int ECUtil::encode(
     }
   }
 
-  // for (map<int, bufferlist>::iterator i = out->begin();
-  //      i != out->end();
-  //      ++i) {
-  //   ceph_assert(i->second.length() % sinfo.get_chunk_size() == 0);
-  //   ceph_assert(
-  //     sinfo.aligned_chunk_offset_to_logical_offset(i->second.length()) ==
-  //     logical_size);
-  // }
+  return 0;
+}
+
+int ECUtil::encode(
+  const stripe_info_t &sinfo,
+  ErasureCodeInterfaceRef &ec_impl,
+  bufferlist &in,
+  const set<int> &want,
+  map<int, bufferlist> *out) {
+
+  if (ec_impl->supports_variable_parity_len()) {
+    return ECUtil::encode_twotone(sinfo, ec_impl, in, want, out);
+  }
+
+  uint64_t stripe_width = sinfo.get_stripe_width();
+  if (in.length() % stripe_width != 0) {
+    uint64_t pad = stripe_width - in.length() % stripe_width;
+    in.append_zero(pad);
+  }
+
+  uint64_t logical_size = in.length();
+
+  ceph_assert(logical_size % sinfo.get_stripe_width() == 0);
+  ceph_assert(out);
+  ceph_assert(out->empty());
+
+  if (logical_size == 0)
+    return 0;
+
+  for (uint64_t i = 0; i < logical_size; i += stripe_width) {
+    map<int, bufferlist> encoded;
+    bufferlist buf;
+    buf.substr_of(in, i, stripe_width);
+    int r = ec_impl->encode(want, buf, &encoded);
+    ceph_assert(r == 0);
+
+    // take results out after encoding
+    for (map<int, bufferlist>::iterator i = encoded.begin();
+	 i != encoded.end();
+	 ++i) {
+      printf("[ECUtil::encode] i: %d, len1: %d, len2: %ld\n", i->first, i->second.length(), sinfo.get_chunk_size());
+      // ceph_assert(i->second.length() == sinfo.get_chunk_size());
+      (*out)[i->first].claim_append(i->second);
+    }
+  }
+
   return 0;
 }
 

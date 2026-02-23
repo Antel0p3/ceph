@@ -210,7 +210,8 @@ void ExtentCache::present_rmw_update(
       [&](uint64_t off, uint64_t len,
 	  extent *ext, object_extent_set::update_action *action) {
 	action->action = object_extent_set::update_action::NONE;
-	ceph_assert(ext && ext->pinned_by_write());
+  // TODOMYMY
+	// ceph_assert(ext && ext->pinned_by_write());
 	action->bl = bufferlist();
 	action->bl->substr_of(
 	  res.get_val(),

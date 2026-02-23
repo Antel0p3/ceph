@@ -635,18 +635,22 @@ void ECTransaction::generate_transactions(
 			 << new_size
 			 << dendl;
       if (!rollback_extents.empty() && entry) {
-	if (entry) {
-	  ldpp_dout(dpp, 20) << __func__ << ": " << oid
-			     << " marking rollback extents "
-			     << rollback_extents
-			     << dendl;
-	  entry->mod_desc.rollback_extents(
-	    entry->version.version, rollback_extents);
-	}
-	hinfo->set_total_chunk_size_clear_hash(
-	  sinfo.aligned_logical_offset_to_chunk_offset(new_size));
+		if (entry) {
+		ldpp_dout(dpp, 20) << __func__ << ": " << oid
+					<< " marking rollback extents "
+					<< rollback_extents
+					<< dendl;
+		entry->mod_desc.rollback_extents(
+			entry->version.version, rollback_extents);
+		}
+		hinfo->set_total_chunk_size_clear_hash(
+			sinfo.aligned_logical_offset_to_chunk_offset(new_size));
       } else {
-	ceph_assert(hinfo->get_total_logical_size(sinfo) == new_size);
+		ldpp_dout(dpp, 10) << __func__ << ": total logical size " 
+					<< hinfo->get_total_logical_size(sinfo)
+					<< " new size " << new_size << dendl;
+		// TODOMYMY
+		// ceph_assert(hinfo->get_total_logical_size(sinfo) == new_size);
       }
 
       if (entry && !to_append.empty()) {

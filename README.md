@@ -160,6 +160,16 @@ From the `ceph/` directory, run the following commands to launch a test Ceph
 cluster:
 
 	cd build
+	ninja libec_twotone.so unittest_erasure_code_twotone ceph-erasure-code-tool
+	../bin/ceph-erasure-code-tool encode plugin=twotone,k=2,m=2 4096 0,1,2,3 ab.txt
+	../bin/ceph-erasure-code-tool encode plugin=twotone,k=1,m=2 4096 0,1,2 abb.txt
+	../bin/ceph-erasure-code-tool decode plugin=twotone,k=2,m=2 64 0,3 test.txt
+	/usr/local/lib/ceph/erasure-code/libec_twotone.so
+	tail -f out/osd.*.log | tee logk2m2.txt
+
+	./bin/ceph config set osd debug_osd 20
+	./bin/ceph config set osd debug_filestore 10
+
 	ninja vstart        # builds just enough to run vstart
 	../src/vstart.sh --debug --new -x --localhost --bluestore
 	./bin/ceph -s

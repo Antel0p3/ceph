@@ -97,6 +97,13 @@ int decode(
   std::map<int, ceph::buffer::list> &to_decode,
   std::map<int, ceph::buffer::list*> &out);
 
+int encode_twotone(
+  const stripe_info_t &sinfo,
+  ceph::ErasureCodeInterfaceRef &ec_impl,
+  ceph::buffer::list &in,
+  const std::set<int> &want,
+  std::map<int, ceph::buffer::list> *out);
+  
 int encode(
   const stripe_info_t &sinfo,
   ceph::ErasureCodeInterfaceRef &ec_impl,

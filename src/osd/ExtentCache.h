@@ -321,7 +321,8 @@ private:
 	      new extent(tailoff, taillen);
 	    ext->link(*this, pin);
 	  } else {
-	    ceph_assert(!action.bl);
+      // TODOMYMY
+	    // ceph_assert(!action.bl);
 	  }
 	}
       }

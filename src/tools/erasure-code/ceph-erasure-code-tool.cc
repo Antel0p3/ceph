@@ -212,12 +212,6 @@ int do_encode(const std::vector<const char*> &args) {
     return 1;
   }
 
-  uint64_t stripe_width = sinfo->get_stripe_width();
-  if (decoded_data.length() % stripe_width != 0) {
-    uint64_t pad = stripe_width - decoded_data.length() % stripe_width;
-    decoded_data.append_zero(pad);
-  }
-
   std::map<int, ceph::bufferlist> encoded_data;
   r = ECUtil::encode(*sinfo, ec_impl, decoded_data, want, &encoded_data);
   if (r < 0) {

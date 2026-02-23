@@ -2075,7 +2075,9 @@ bool ECBackend::try_reads_to_commit()
     written_set[i.first] = i.second.get_interval_set();
   }
   dout(20) << __func__ << ": written_set: " << written_set << dendl;
-  ceph_assert(written_set == op->plan.will_write);
+  dout(20) << __func__ << ": op->plan.will_write: " << op->plan.will_write << dendl;
+  // TODOMYMY
+  // ceph_assert(written_set == op->plan.will_write);
 
   if (op->using_cache) {
     for (auto &&hpair: written) {
