@@ -113,16 +113,16 @@ int ErasureCodeTwotone::encode_chunks(const set<int> &want_to_encode,
 
   bool parity_has_base_size = false;
   // Optional: debug print after encoding
-  printf("\n\n[encode_chunks] after encoding:::\n\n");
+  // printf("\n\n[encode_chunks] after encoding:::\n\n");
   for (int i = 0; i < k + m; ++i) {
-      printf("%d: length=%u\n", i, (*encoded)[i].length());
-      for (unsigned j = 0; j < (*encoded)[i].length(); ++j) {
-          printf("%02x ", (unsigned char)(*encoded)[i].c_str()[j]);
-          if ((j+1) % 16 == 0) {
-            printf("\n");
-          }
-      }
-      printf("\n\n");
+      // printf("%d: length=%u\n", i, (*encoded)[i].length());
+      // for (unsigned j = 0; j < (*encoded)[i].length(); ++j) {
+      //     printf("%02x ", (unsigned char)(*encoded)[i].c_str()[j]);
+      //     if ((j+1) % 16 == 0) {
+      //       printf("\n");
+      //     }
+      // }
+      // printf("\n\n");
       if (i >= k && (*encoded)[i].length() == base_block_size) {
         parity_has_base_size = true;
       }
@@ -154,7 +154,7 @@ int ErasureCodeTwotone::decode_chunks(const set<int> &want_to_read,
   }
 
   ceph_assert(blocksize != UINT_MAX);
-  printf("[decode] blocksize: %d\n", blocksize);
+  // printf("[decode] blocksize: %d\n", blocksize);
 
 
   /* -------------------------------------------------
@@ -218,17 +218,17 @@ int ErasureCodeTwotone::decode_chunks(const set<int> &want_to_read,
   ceph_assert(erasures_count > 0);
 
   int res = twotone_decode(erasures, data, coding, blocksize);
-  printf("\n\n[decode_chunks] after decoding:::\n\n");
-  for (int i = 0; i < k + m; ++i) {
-      printf("%d: length=%u\n", i, (*decoded)[i].length());
-      for (unsigned j = 0; j < (*decoded)[i].length(); ++j) {
-          printf("%02x ", (unsigned char)(*decoded)[i].c_str()[j]);
-          if ((j+1) % 16 == 0) {
-            printf("\n");
-          }
-      }
-      printf("\n\n");
-  }
+  // printf("\n\n[decode_chunks] after decoding:::\n\n");
+  // for (int i = 0; i < k + m; ++i) {
+  //     printf("%d: length=%u\n", i, (*decoded)[i].length());
+  //     for (unsigned j = 0; j < (*decoded)[i].length(); ++j) {
+  //         printf("%02x ", (unsigned char)(*decoded)[i].c_str()[j]);
+  //         if ((j+1) % 16 == 0) {
+  //           printf("\n");
+  //         }
+  //     }
+  //     printf("\n\n");
+  // }
   return res;
 }
 
@@ -263,29 +263,108 @@ void ErasureCodeTwotoneImpl::twotone_encode(char **data, char **coding, int bloc
   }
 }
 
+// Reconstruct missing parity chunks using the same encode-style tight loops.
+static void reconstruct_parity(int k, int m,
+                                const TwotoneLayout &layout,
+                                size_t cell_num,
+                                __uint128_t **D, __uint128_t **P,
+                                const std::vector<bool> &missing_chunk)
+{
+    for (int p = 0; p < m; ++p) {
+        if (!missing_chunk[k + p]) continue;
+        const size_t parity_cells = cell_num + layout.max_shift[p];
+        __uint128_t* parity = P[p];
+        memset(parity, 0, parity_cells * sizeof(__uint128_t));
+        for (int d = 0; d < k; ++d) {
+            const size_t shift_d = layout.shift[p * k + d];
+            __uint128_t* src = D[d];
+            __uint128_t* dst = parity + shift_d;
+            for (size_t i = 0; i < cell_num; ++i)   // tight XOR, vectorizable
+                dst[i] ^= src[i];
+        }
+    }
+}
+
 int ErasureCodeTwotoneImpl::twotone_decode(int *erasures, char **data, char **coding, int blocksize)
 {
     const size_t cell_num = blocksize / BYTE_PERCELL;
-    std::vector<bool> missing(k + m, false);
 
+    std::vector<bool> missing_chunk(k + m, false);
     for (int i = 0; erasures[i] != -1; ++i)
-        missing[erasures[i]] = true;
+        missing_chunk[erasures[i]] = true;
 
     __uint128_t** D = reinterpret_cast<__uint128_t**>(data);
     __uint128_t** P = reinterpret_cast<__uint128_t**>(coding);
 
-    // Track known cells
-    std::vector<std::vector<bool>> known(k, std::vector<bool>(cell_num, true));
+    // Count missing data chunks
+    int missing_data_count = 0;
     for (int d = 0; d < k; ++d)
-        if (missing[d])
-            std::fill(known[d].begin(), known[d].end(), false);
+        if (missing_chunk[d]) ++missing_data_count;
 
-    // Iteratively reconstruct data cells
+    // ------------------------------------------------------------------
+    // Fast path: single missing data chunk (the common case).
+    //
+    // Invert the encode directly:
+    //   1. Copy parity into a residual buffer.
+    //   2. XOR out each known data chunk's contribution (encode-style,
+    //      tight dst[i]^=src[i] loops — SIMD-vectorizable).
+    //   3. The residual at offset shift_miss IS the missing chunk.
+    //
+    // No known-tracking, no iteration, identical inner loop to encode.
+    // ------------------------------------------------------------------
+    if (missing_data_count == 1) {
+        int d_miss = -1;
+        for (int d = 0; d < k; ++d)
+            if (missing_chunk[d]) { d_miss = d; break; }
+
+        int p_use = -1;
+        for (int p = 0; p < m; ++p)
+            if (!missing_chunk[k + p]) { p_use = p; break; }
+
+        ceph_assert(p_use >= 0);
+
+        const size_t parity_cells = cell_num + layout.max_shift[p_use];
+        const size_t shift_miss   = layout.shift[p_use * k + d_miss];
+
+        // Residual = copy of the chosen parity chunk
+        std::vector<__uint128_t> residual(parity_cells);
+        memcpy(residual.data(), P[p_use], parity_cells * sizeof(__uint128_t));
+
+        // XOR out all known data chunks (encode-style, tight vectorizable loops)
+        for (int d = 0; d < k; ++d) {
+            if (d == d_miss) continue;
+            const size_t shift_d = layout.shift[p_use * k + d];
+            __uint128_t* src = D[d];
+            __uint128_t* dst = residual.data() + shift_d;
+            for (size_t i = 0; i < cell_num; ++i)   // tight XOR, vectorizable
+                dst[i] ^= src[i];
+        }
+
+        // Missing chunk sits at offset shift_miss in the residual
+        memcpy(D[d_miss], residual.data() + shift_miss,
+               cell_num * sizeof(__uint128_t));
+
+        reconstruct_parity(k, m, layout, cell_num, D, P, missing_chunk);
+        return 0;
+    }
+
+    // ------------------------------------------------------------------
+    // General case: iterative peeling decoder (cell-level).
+    // Uses a flat uint8_t array instead of vector<vector<bool>> to avoid
+    // bit-manipulation overhead and improve cache behaviour.
+    // ------------------------------------------------------------------
+
+    // known_flat[d * cell_num + off] = 1 if D[d][off] is known
+    std::vector<uint8_t> known_flat(k * cell_num, 1);
+    for (int d = 0; d < k; ++d)
+        if (missing_chunk[d])
+            memset(&known_flat[d * cell_num], 0, cell_num);
+
     bool progress = true;
     while (progress) {
         progress = false;
         for (int p = 0; p < m; ++p) {
-            if (missing[k + p]) continue;
+            if (missing_chunk[k + p]) continue;
             const size_t parity_cells = cell_num + layout.max_shift[p];
             __uint128_t* parity = P[p];
 
@@ -296,49 +375,36 @@ int ErasureCodeTwotoneImpl::twotone_decode(int *erasures, char **data, char **co
                 size_t u_off = 0;
 
                 for (int d = 0; d < k; ++d) {
-                    size_t shift = layout.shift[p * k + d];
-                    if (t < shift) continue;
-                    size_t off = t - shift;
+                    const size_t shift_d = layout.shift[p * k + d];
+                    if (t < shift_d) continue;
+                    const size_t off = t - shift_d;
                     if (off >= cell_num) continue;
 
-                    if (known[d][off]) val ^= D[d][off];
-                    else { unknown_cnt++; u_data = d; u_off = off; }
+                    if (known_flat[d * cell_num + off]) {
+                        val ^= D[d][off];
+                    } else {
+                        ++unknown_cnt;
+                        u_data = d;
+                        u_off  = off;
+                    }
                 }
 
                 if (unknown_cnt == 1) {
-                    D[u_data][u_off] = val;
-                    known[u_data][u_off] = true;
+                    D[u_data][u_off]                        = val;
+                    known_flat[u_data * cell_num + u_off]   = 1;
                     progress = true;
                 }
             }
         }
     }
 
-    // Check all data recovered
+    // Check all data cells recovered
     for (int d = 0; d < k; ++d)
-      for (size_t i = 0; i < cell_num; ++i)
-        if (!known[d][i])
-          return -EIO;
+        for (size_t i = 0; i < cell_num; ++i)
+            if (!known_flat[d * cell_num + i])
+                return -EIO;
 
-    // Reconstruct missing parity chunks
-    for (int p = 0; p < m; ++p) {
-        if (!missing[k + p]) continue;
-        __uint128_t* parity = P[p];
-        const size_t parity_cells = cell_num + layout.max_shift[p];
-
-        for (size_t t = 0; t < parity_cells; ++t) {
-            __uint128_t val = 0;
-            for (int d = 0; d < k; ++d) {
-                size_t shift = layout.shift[p * k + d];
-                if (t < shift) continue;
-                size_t off = t - shift;
-                if (off >= cell_num) continue;
-                val ^= D[d][off];
-            }
-            parity[t] = val;
-        }
-    }
-
+    // reconstruct_parity(k, m, layout, cell_num, D, P, missing_chunk);
     return 0;
 }
 

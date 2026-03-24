@@ -9,6 +9,7 @@ set(twotone_utils_srcs
   )
 
 add_library(twotone_utils OBJECT ${twotone_utils_srcs})
+target_compile_options(twotone_utils PRIVATE -O3 -march=native)
 
 set(ec_twotone_objs
   $<TARGET_OBJECTS:gf-complete_objs>

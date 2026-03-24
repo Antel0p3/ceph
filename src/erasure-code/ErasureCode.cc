@@ -155,7 +155,7 @@ int ErasureCode::encode_prepare(const bufferlist &raw,
   unsigned blocksize = get_chunk_size(raw.length());
   unsigned padded_chunks = k - raw.length() / blocksize;
   bufferlist prepared = raw;
-  printf("[encode prepare] raw.length: %d, blocksize: %d\n", raw.length(), blocksize);
+  // printf("[encode prepare] raw.length: %d, blocksize: %d\n", raw.length(), blocksize);
   for (unsigned int i = 0; i < k - padded_chunks; i++) {
     bufferlist &chunk = encoded[chunk_index(i)];
     chunk.substr_of(prepared, i * blocksize, blocksize);
