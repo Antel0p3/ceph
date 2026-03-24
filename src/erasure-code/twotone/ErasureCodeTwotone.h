@@ -81,6 +81,9 @@ public:
   unsigned get_alignment() const override;
   void prepare() override;
 private:
+  // Pre-allocated residual buffer for fast-path decode — avoids per-call malloc.
+  // Sized lazily on first use; stable afterwards (chunk size is fixed per pool).
+  std::vector<char> scratch_buf;
   int parse(ceph::ErasureCodeProfile &profile, std::ostream *ss) override;
 };
 
