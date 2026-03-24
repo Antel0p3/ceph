@@ -210,6 +210,10 @@ int ErasureCode::_decode(const set<int> &want_to_read,
 {
   vector<int> have;
   have.reserve(chunks.size());
+  unsigned int k = get_data_chunk_count();
+  unsigned int m = get_chunk_count() - k;
+  unsigned blocksize = (*chunks.begin()).second.length();
+
   for (map<int, bufferlist>::const_iterator i = chunks.begin();
        i != chunks.end();
        ++i) {
@@ -221,12 +225,14 @@ int ErasureCode::_decode(const set<int> &want_to_read,
 	 i != want_to_read.end();
 	 ++i) {
       (*decoded)[*i] = chunks.find(*i)->second;
+      if (supports_variable_parity_len() && m != 1) {
+        bufferlist temp;
+        temp.substr_of((*decoded)[*i], 0, blocksize - m / 2 * (k - 1) * 16);
+        (*decoded)[*i].swap(temp);
+      }
     }
     return 0;
   }
-  unsigned int k = get_data_chunk_count();
-  unsigned int m = get_chunk_count() - k;
-  unsigned blocksize = (*chunks.begin()).second.length();
   for (unsigned int i =  0; i < k + m; i++) {
     if (chunks.find(i) == chunks.end()) {
       bufferlist tmp;

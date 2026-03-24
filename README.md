@@ -161,11 +161,20 @@ cluster:
 
 	cd build
 	ninja libec_twotone.so unittest_erasure_code_twotone ceph-erasure-code-tool
-	../bin/ceph-erasure-code-tool encode plugin=twotone,k=2,m=2 4096 0,1,2,3 ab.txt
+	../bin/ceph-erasure-code-tool encode plugin=twotone,k=2,m=2 4096 0,1,2,3 test.txt
 	../bin/ceph-erasure-code-tool encode plugin=twotone,k=1,m=2 4096 0,1,2 abb.txt
-	../bin/ceph-erasure-code-tool decode plugin=twotone,k=2,m=2 64 0,3 test.txt
-	/usr/local/lib/ceph/erasure-code/libec_twotone.so
+	../bin/ceph-erasure-code-tool encode plugin=twotone,k=3,m=3 4096 0,1,2,3,4,5 tmp_cd.txt
+	../bin/ceph-erasure-code-tool decode plugin=twotone,k=3,m=3 4096 0,2,4 tmp_cd.txt
+	../bin/ceph-erasure-code-tool decode plugin=twotone,k=2,m=2 4096 0,3 test.txt
+	../bin/ceph-erasure-code-tool decode plugin=twotone,k=2,m=2 4096 0,1,2,3 pab.txt
+	cp ~/ceph/build/lib/libec_twotone.so /usr/local/lib/ceph/erasure-code/libec_twotone.so
 	tail -f out/osd.*.log | tee logk2m2.txt
+
+	./bin/rados -c ceph.conf -k keyring -p ec-twotone-small put testobj ./test/ab.txt
+	./bin/rados -c ceph.conf -k keyring -p ec-twotone-small put testobj1 ./test/cd.txt
+	./bin/rados -c ceph.conf -k keyring -p ec-twotone-small get testobj ./test/recovered_loss.txt
+	./bin/rados -c ceph.conf -k keyring -p ec-twotone-small get testobj1 ./test/recovered_loss.txt
+	./bin/ceph osd map ec-twotone-small testobj --format json-pretty
 
 	./bin/ceph config set osd debug_osd 20
 	./bin/ceph config set osd debug_filestore 10

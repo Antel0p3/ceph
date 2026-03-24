@@ -648,6 +648,8 @@ void ECTransaction::generate_transactions(
       } else {
 		ldpp_dout(dpp, 10) << __func__ << ": total logical size " 
 					<< hinfo->get_total_logical_size(sinfo)
+					<< " chunk size " << sinfo.get_chunk_size()
+					<< " total chunk size " << hinfo->get_total_chunk_size()
 					<< " new size " << new_size << dendl;
 		// TODOMYMY
 		// ceph_assert(hinfo->get_total_logical_size(sinfo) == new_size);

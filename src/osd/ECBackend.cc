@@ -2318,6 +2318,10 @@ void ECBackend::objects_read_async(
           ldpp_dout(dpp, 30) << "range offset: " << range.first.get_off() << dendl;
           ldpp_dout(dpp, 30) << "length: " << length << dendl;
           ldpp_dout(dpp, 30) << "range length: " << range.first.get_len()  << dendl;
+    // TODOMYMY
+    if ((offset + length)> (range.first.get_off() + range.first.get_len())) {
+      length = range.first.get_off() + range.first.get_len() - offset;
+    }
 	  ceph_assert(
 	    (offset + length) <=
 	    (range.first.get_off() + range.first.get_len()));
