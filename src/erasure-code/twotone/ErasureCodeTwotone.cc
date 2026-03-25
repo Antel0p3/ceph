@@ -152,25 +152,6 @@ int ErasureCodeTwotone::encode_chunks(const set<int> &want_to_encode,
   }
 
   twotone_encode(chunks, chunks + k, base_block_size);
-
-  bool parity_has_base_size = false;
-  // Optional: debug print after encoding
-  // printf("\n\n[encode_chunks] after encoding:::\n\n");
-  for (int i = 0; i < k + m; ++i) {
-      // printf("%d: length=%u\n", i, (*encoded)[i].length());
-      // for (unsigned j = 0; j < (*encoded)[i].length(); ++j) {
-      //     printf("%02x ", (unsigned char)(*encoded)[i].c_str()[j]);
-      //     if ((j+1) % 16 == 0) {
-      //       printf("\n");
-      //     }
-      // }
-      // printf("\n\n");
-      if (i >= k && (*encoded)[i].length() == base_block_size) {
-        parity_has_base_size = true;
-      }
-  }
-
-  ceph_assert(parity_has_base_size);
   return 0;
 }
 
@@ -200,57 +181,35 @@ int ErasureCodeTwotone::decode_chunks(const set<int> &want_to_read,
 
 
   /* -------------------------------------------------
-   *  Allocate decoded buffers for ALL data shards
-   * ------------------------------------------------- */
-  for (int i = 0; i < k; ++i) {
-    (*decoded)[i].clear();
-    (*decoded)[i].push_back(buffer::create_aligned(blocksize, SIMD_ALIGN));
-  }
-
-  /* -------------------------------------------------
-   *  Prepare data + coding pointers and erasures
+   *  Prepare data + coding pointers and erasures.
+   *
+   *  _decode() has already built decoded[i] for every chunk:
+   *    present chunks  → aligned reference/copy of the input (data ready)
+   *    missing chunks  → create_aligned(blocksize) uninitialized buffer
+   *
+   *  We reuse those buffers directly for present chunks (no copy needed).
+   *  Missing data chunks just need zeroing.
+   *  Missing parity chunks need a fresh parity-sized allocation because
+   *  _decode() only allocated blocksize bytes (may be smaller than parity_size).
    * ------------------------------------------------- */
   for (int i = 0; i < k + m; ++i) {
     bool missing = (chunks.find(i) == chunks.end());
-
-    if (missing) {
-      erasures[erasures_count++] = i;
-    }
+    if (missing) erasures[erasures_count++] = i;
 
     if (i < k) {
-      // data shard
-      data[i] = (*decoded)[i].c_str();
-
-      if (!missing) {
-        // copy existing shard
-        // chunks.find(i)->second.copy_out(0, blocksize, data[i]);
-        bufferlist::const_iterator it = chunks.find(i)->second.begin();
-        it.copy(blocksize, data[i]);
-      } else {
-        memset(data[i], 0, blocksize);
-      }
+      data[i] = (*decoded)[i].c_str();   // _decode() already set this up
+      if (missing) memset(data[i], 0, blocksize);
     } else {
-      // parity shard
       int p = i - k;
-
-      unsigned parity_size = 0;
-      if (!missing)
-        parity_size = chunks.find(i)->second.length();
-      else
-        parity_size = (blocksize / BYTE_PERCELL + layout.max_shift[p]) * BYTE_PERCELL;
-
-      (*decoded)[i].clear();
-      (*decoded)[i].push_back(buffer::create_aligned(parity_size, SIMD_ALIGN));
-      // printf("[decode_chunks] chunk %d, size: %d\n", i, parity_size);
-
-      coding[p] = (*decoded)[i].c_str();
-
-      if (!missing) {
-        // copy 
-        bufferlist::const_iterator it = chunks.find(i)->second.begin();
-        it.copy(parity_size, coding[p]);
-      } else {
+      if (missing) {
+        unsigned parity_size =
+            (blocksize / BYTE_PERCELL + layout.max_shift[p]) * BYTE_PERCELL;
+        (*decoded)[i].clear();
+        (*decoded)[i].push_back(buffer::create_aligned(parity_size, SIMD_ALIGN));
+        coding[p] = (*decoded)[i].c_str();
         memset(coding[p], 0, parity_size);
+      } else {
+        coding[p] = (*decoded)[i].c_str();   // aligned ref from _decode(), no copy
       }
     }
   }
@@ -274,13 +233,6 @@ int ErasureCodeTwotone::decode_chunks(const set<int> &want_to_read,
   return res;
 }
 
-void puthex(void* con, int size) {
-  for (int i = 0; i < size; i++)
-  {
-    printf("%02x ", ((char*)con)[i]);
-  }
-  printf("\n");
-}
 
 void ErasureCodeTwotoneImpl::twotone_encode(char **data, char **coding, int blocksize)
 {
@@ -305,7 +257,7 @@ static void reconstruct_parity(int k, int m,
                                 const TwotoneLayout &layout,
                                 size_t chunk_bytes,
                                 char **D, char **P,
-                                const std::vector<bool> &missing_chunk)
+                                const bool *missing_chunk)
 {
     for (int p = 0; p < m; ++p) {
         if (!missing_chunk[k + p]) continue;
@@ -323,7 +275,7 @@ int ErasureCodeTwotoneImpl::twotone_decode(int *erasures, char **data, char **co
 {
     const size_t cell_num = blocksize / BYTE_PERCELL;
 
-    std::vector<bool> missing_chunk(k + m, false);
+    bool missing_chunk[k + m] = {};
     for (int i = 0; erasures[i] != -1; ++i)
         missing_chunk[erasures[i]] = true;
 
@@ -360,7 +312,7 @@ int ErasureCodeTwotoneImpl::twotone_decode(int *erasures, char **data, char **co
 
         // Pre-compute signed byte deltas: data[d] contributes to output[off]
         // from data[d][off + delta_d]; valid when 0 <= off+delta_d < chunk_bytes.
-        std::vector<ssize_t> delta(k);
+        ssize_t delta[k];
         for (int d = 0; d < k; ++d)
             delta[d] = (ssize_t)shift_miss_bytes
                      - (ssize_t)(layout.shift[p_use * k + d] * BYTE_PERCELL);
