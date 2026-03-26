@@ -278,6 +278,23 @@ namespace ceph {
     virtual unsigned int get_chunk_size(unsigned int object_size) const = 0;
 
     /**
+     * Return the size (in bytes) of a single parity chunk produced by
+     * **encode()** for parity shard **parity_idx** (0-based among the m
+     * parity shards).  For codes with uniform chunk sizes this equals
+     * **get_chunk_size(object_size)**.  Codes with variable-length parity
+     * (e.g. shift-based XOR codes) override this to return the actual
+     * on-disk size so that the OSD layer can slice stored shards correctly.
+     *
+     * @param [in] object_size  the stripe width passed to **encode()**
+     * @param [in] parity_idx   0-based index among the coding chunks
+     * @return the size (in bytes) of that parity chunk
+     */
+    virtual unsigned int get_parity_chunk_size(unsigned int object_size,
+                                               int parity_idx = 0) const {
+      return get_chunk_size(object_size);
+    }
+
+    /**
      * Compute the smallest subset of **available** chunks that needs
      * to be retrieved in order to successfully decode
      * **want_to_read** chunks.

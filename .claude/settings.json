@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /root/ceph -path *test* -name *twotone* -type f)",
+      "Bash(ninja erasure_code_twotone ceph_erasure_code_tool ceph-osd ceph-mon ceph-mgr)",
+      "Bash(export PATH=/root/ceph/build/bin:$PATH export LD_LIBRARY_PATH=/root/ceph/build/lib:$LD_LIBRARY_PATH __NEW_LINE_6c45f4a2568c77a0__ ../src/stop.sh 2)",
+      "Bash(/dev/null rm:*)",
+      "Bash(export PATH=/root/ceph/build/bin:$PATH export LD_LIBRARY_PATH=/root/ceph/build/lib:$LD_LIBRARY_PATH __NEW_LINE_c8d12c0b32d14991__ sleep 8 ./bin/ceph osd erasure-code-profile set twotone-small plugin=twotone k=2 m=2 crush-failure-domain=osd directory=$PWD/lib --force ./bin/ceph osd pool create ec-twotone-small 64 64 erasure twotone-small ./bin/ceph osd pool set ec-twotone-small min_size 2 ./bin/ceph osd pool application enable ec-twotone-small rados sleep 8 ./bin/ceph -s)",
+      "Bash(ninja -j2 ceph-osd ceph-erasure-code-tool)",
+      "Bash(export PATH=/root/ceph/build/bin:$PATH export LD_LIBRARY_PATH=/root/ceph/build/lib:$LD_LIBRARY_PATH cd /root/ceph/build __NEW_LINE_af9215336537a406__ ../src/stop.sh)",
+      "Bash(export PATH=/root/ceph/build/bin:$PATH export LD_LIBRARY_PATH=/root/ceph/build/lib:$LD_LIBRARY_PATH cd /root/ceph/build __NEW_LINE_39bae8cc9d254fd3__ sleep 10 __NEW_LINE_39bae8cc9d254fd3__ ./bin/ceph osd erasure-code-profile set twotone-bench plugin=twotone k=3 m=2 crush-failure-domain=osd directory=$PWD/lib --force ./bin/ceph osd erasure-code-profile set jerasure-bench plugin=jerasure technique=reed_sol_van k=3 m=2 crush-failure-domain=osd --force ./bin/ceph osd pool create twotone-pool 128 128 erasure twotone-bench ./bin/ceph osd pool create jerasure-pool 128 128 erasure jerasure-bench ./bin/ceph osd pool application enable twotone-pool rados ./bin/ceph osd pool application enable jerasure-pool rados sleep 8 ./bin/ceph -s)",
+      "Bash(export PATH=/root/ceph/build/bin:$PATH export LD_LIBRARY_PATH=/root/ceph/build/lib:$LD_LIBRARY_PATH cd /root/ceph/build __NEW_LINE_6bc663c258b81781__ echo \"=== twotone bench \\(60s write, 4M objects\\) ===\" ./bin/rados bench -p twotone-pool 60 write --no-cleanup --object-size 4M)",
+      "Bash(export PATH=/root/ceph/build/bin:$PATH export LD_LIBRARY_PATH=/root/ceph/build/lib:$LD_LIBRARY_PATH cd /root/ceph/build __NEW_LINE_6f3a9ab003765b8c__ ./bin/ceph -s)",
+      "Bash(grep -v 'all dangerous' echo --- grep -h 'FAILED ceph_assert' out/osd.*.log)",
+      "Bash(ninja -j2 ceph-osd)",
+      "Bash(export PATH=/root/ceph/build/bin:$PATH export LD_LIBRARY_PATH=/root/ceph/build/lib:$LD_LIBRARY_PATH cd /root/ceph/build __NEW_LINE_e93b0daa1d56cf67__ ../src/stop.sh)",
+      "Read(//root/ceph/build/directory=$PWD/**)",
+      "Bash(export PATH=/root/ceph/build/bin:$PATH export LD_LIBRARY_PATH=/root/ceph/build/lib:$LD_LIBRARY_PATH cd /root/ceph/build __NEW_LINE_f2ee7c9f6c16e7e5__ echo \"=== TwoTone k=3 m=2, 4M objects, 60s write ===\")",
+      "Bash(./bin/rados bench:*)",
+      "Bash(../src/stop.sh)",
+      "Bash(MDS=0 MON=1 MGR=1 OSD=6 ../src/vstart.sh -n -x --without-dashboard --filestore)",
+      "Bash(./bin/ceph -s)",
+      "Bash(./bin/ceph osd:*)",
+      "Bash(MDS=0 MON=1 MGR=1 OSD=6 ../src/vstart.sh -n -x --without-dashboard --bluestore)",
+      "Bash(grep -v \"^$\")",
+      "Bash(./bin/ceph health:*)",
+      "Bash(chmod +x /root/ceph/build/twotone_robustness.sh)",
+      "Bash(bash twotone_robustness.sh)"
+    ]
+  }
+}

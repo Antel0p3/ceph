@@ -243,3 +243,133 @@ To build the documentation, ensure that you are in the top-level
 ## Reporting Issues
 
 To report an issue and view existing issues, please visit https://tracker.ceph.com/projects/ceph.
+
+# Test Twotone
+
+## 虚拟环境搭建
+```
+cd build ../src/stop.sh; rm -rf out/ dev/
+
+MDS=0 MON=1 MGR=1 OSD=6 ../src/vstart.sh -n -x --without-dashboard --filestore
+
+export PYTHONPATH=/root/ceph/src/pybind:/root/ceph/build/lib/cython_modules/lib.3:/root/ceph/src/python-common:$PYTHONPATH
+export LD_LIBRARY_PATH=/root/ceph/build/lib:$LD_LIBRARY_PATH
+export PATH=/root/ceph/build/bin:$PATH
+alias cephfs-shell=/root/ceph/src/tools/cephfs/cephfs-shell
+CEPH_DEV=1
+```
+
+## Twotone测试
+
+**Delete the stuck pool** (if not already done):
+`./bin/ceph osd pool rm ec-twotone-small ec-twotone-small --yes-i-really-really-mean-it`
+
+**Recreate the erasure code profile with crush-failure-domain=osd:**
+```
+./bin/ceph osd erasure-code-profile rm twotone-small   # Remove old if exists
+./bin/ceph osd erasure-code-profile set twotone-small plugin=twotone k=2 m=2 crush-failure-domain=osd directory=$PWD/lib --force
+```
+
+**Recreate the pool:**
+`./bin/ceph osd pool create ec-twotone-small 64 64 erasure twotone-small`
+
+**Set min_size to 2** (as before, to ensure activation):
+`./bin/ceph osd pool set ec-twotone-small min_size 2`
+
+**Optional: Enable application tag** (silences a minor warning): `./bin/ceph osd pool application enable ec-twotone-small rados`
+
+**Monitor progress** (PGs should now activate):
+```
+watch ./bin/ceph -s
+./bin/ceph pg ls-by-pool ec-twotone-small
+./bin/ceph health detail
+
+./bin/ceph config set osd debug_osd 20
+./bin/ceph config set osd debug_filestore 10
+tail -f out/osd.*.log | tee logk2m1.txt
+```
+
+Once PGs are active (no more "inactive/incomplete" warnings for this pool)
+
+**Write to PG**
+```
+./bin/rados -c ceph.conf -k keyring -p ec-twotone-small put abobj ./test/abobj.txt
+```
+
+**Read from PG**
+```
+./bin/rados -c ceph.conf -k keyring -p ec-twotone-small get abobj ./test/recovered_abobj.txt
+```
+
+**Check OSD Map**
+```
+root@sealion:~/ceph/build# ./bin/ceph osd map ec-twotone-small test_object
+
+osdmap e38 pool 'ec-twotone-small' (1) object 'test_object' -> pg 1.8416ffa4 (1.24) -> up ([3,0,4], p3) acting ([3,0,4], p3)
+root@sealion:~/ceph/build# ./bin/ceph osd map ec-twotone-small testobj --format json-pretty
+
+{
+    "epoch": 38,
+    "pool": "ec-twotone-small",
+    "pool_id": 1,
+    "objname": "test_object",
+    "raw_pgid": "1.8416ffa4",
+    "pgid": "1.24",
+    "up": [
+        3,
+        0,
+        4
+    ],
+    "up_primary": 3,
+    "acting": [
+        3,
+        0,
+        4
+    ],
+    "acting_primary": 3
+}
+```
+Bigger file, vstart with --filestore instead of bluestore to better spot files
+```
+root@sealion:~/ceph/build# hexdump -C test/abobj.txt 
+00000000  41 41 41 41 41 41 41 41  41 41 41 41 41 41 41 41  |AAAAAAAAAAAAAAAA|
+*
+00001000  42 42 42 42 42 42 42 42  42 42 42 42 42 42 42 42  |BBBBBBBBBBBBBBBB|
+*
+00002000
+root@sealion:~/ceph/build# ./bin/rados -c ceph.conf -k keyring -p ec-twotone-small put abobj ./test/abobj.txt 
+
+root@sealion:~/ceph/build# ./bin/ceph osd map ec-twotone-small abobj --format json-pretty
+{
+    "epoch": 30,
+    "pool": "ec-twotone-small",
+    "pool_id": 1,
+    "objname": "abobj",
+    "raw_pgid": "1.c192046b",
+    "pgid": "1.2b",
+    "up": [
+        3,
+        2,
+        0
+    ],
+    "up_primary": 3,
+    "acting": [
+        3,
+        2,
+        0
+    ],
+    "acting_primary": 3
+}
+root@sealion:~/ceph/build# hexdump -C dev/osd3/current/1.2bs0_head/abobj__head_C192046B__1_ffffffffffffffff_0
+00000000  41 41 41 41 41 41 41 41  41 41 41 41 41 41 41 41  |AAAAAAAAAAAAAAAA|
+*
+00001000
+root@sealion:~/ceph/build# hexdump -C dev/osd2/current/1.2bs1_head/abobj__head_C192046B__1_ffffffffffffffff_1 
+00000000  42 42 42 42 42 42 42 42  42 42 42 42 42 42 42 42  |BBBBBBBBBBBBBBBB|
+*
+00001000
+root@sealion:~/ceph/build# hexdump -C dev/osd0/current/1.2bs2_head/abobj__head_C192046B__1_ffffffffffffffff_2 
+00000000  03 03 03 03 03 03 03 03  03 03 03 03 03 03 03 03  |................|
+*
+00001000
+```

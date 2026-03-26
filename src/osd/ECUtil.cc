@@ -15,35 +15,48 @@ int ECUtil::decode(
   map<int, bufferlist> &to_decode,
   bufferlist *out) {
   ceph_assert(to_decode.size());
-
-  uint64_t total_data_size = to_decode.begin()->second.length();
-  // ceph_assert(total_data_size % sinfo.get_chunk_size() == 0);
-
   ceph_assert(out);
   ceph_assert(out->length() == 0);
 
-  for (map<int, bufferlist>::iterator i = to_decode.begin();
-       i != to_decode.end();
-       ++i) {
-    printf("[ECUtil::decode] i: %d, len: %d\n", i->first, i->second.length());
+  const int k = ec_impl->get_data_chunk_count();
+  const uint64_t data_chunk_size = sinfo.get_chunk_size();
+  const uint64_t stripe_width = sinfo.get_stripe_width();
 
-    // ceph_assert(i->second.length() == total_data_size);
+  // Determine the number of stripes from the first available data shard.
+  // Fall back to parity shards (using their per-shard chunk size) when all
+  // data shards are absent.
+  uint64_t n_stripes = 0;
+  for (auto& [id, bl] : to_decode) {
+    if (id < k) {
+      ceph_assert(bl.length() % data_chunk_size == 0);
+      n_stripes = bl.length() / data_chunk_size;
+      break;
+    }
+  }
+  if (n_stripes == 0) {
+    for (auto& [id, bl] : to_decode) {
+      uint64_t par_size = ec_impl->get_parity_chunk_size(stripe_width, id - k);
+      ceph_assert(par_size > 0);
+      n_stripes = bl.length() / par_size;
+      break;
+    }
   }
 
-  if (total_data_size == 0)
+  if (n_stripes == 0)
     return 0;
 
-  for (uint64_t i = 0; i < total_data_size; i += sinfo.get_chunk_size()) {
+  for (uint64_t s = 0; s < n_stripes; ++s) {
     map<int, bufferlist> chunks;
-    for (map<int, bufferlist>::iterator j = to_decode.begin();
-	 j != to_decode.end();
-	 ++j) {
-      chunks[j->first].substr_of(j->second, i, sinfo.get_chunk_size());
+    for (auto& [id, bl] : to_decode) {
+      uint64_t chunk_size = (id < k)
+        ? data_chunk_size
+        : ec_impl->get_parity_chunk_size(stripe_width, id - k);
+      chunks[id].substr_of(bl, s * chunk_size, chunk_size);
     }
     bufferlist bl;
     int r = ec_impl->decode_concat(chunks, &bl);
     ceph_assert(r == 0);
-    ceph_assert(bl.length() == sinfo.get_stripe_width());
+    ceph_assert(bl.length() == stripe_width);
     out->claim_append(bl);
   }
   return 0;
@@ -81,43 +94,68 @@ int ECUtil::decode(
   int r = ec_impl->minimum_to_decode(need, avail, &min);
   ceph_assert(r == 0);
 
-  int chunks_count = 0;
-  int repair_data_per_chunk = 0;
-  int subchunk_size = sinfo.get_chunk_size()/ec_impl->get_sub_chunk_count();
+  const int k = ec_impl->get_data_chunk_count();
+  const uint64_t data_chunk_size = sinfo.get_chunk_size();
+  const uint64_t stripe_width = sinfo.get_stripe_width();
+  int subchunk_size = data_chunk_size / ec_impl->get_sub_chunk_count();
 
-  for (auto &&i : to_decode) {
-    auto found = min.find(i.first);
-    if (found != min.end()) {
-      int repair_subchunk_count = 0;
-      for (auto& subchunks : min[i.first]) {
-        repair_subchunk_count += subchunks.second;
-      }
-      repair_data_per_chunk = repair_subchunk_count * subchunk_size;
-      chunks_count = (int)i.second.length() / repair_data_per_chunk;
+  // repair_data_per_chunk is the per-stripe stride for DATA shards, taking
+  // sub-chunk repair (e.g. CLAY) into account.  For codes with one sub-chunk
+  // per chunk this equals data_chunk_size.
+  int repair_data_per_chunk = 0;
+  for (auto& [id, subchunk_list] : min) {
+    int repair_subchunk_count = 0;
+    for (auto& subchunks : subchunk_list)
+      repair_subchunk_count += subchunks.second;
+    repair_data_per_chunk = repair_subchunk_count * subchunk_size;
+    break;
+  }
+
+  // Derive n_stripes from the first DATA shard found in min; fall back to
+  // parity shards (using their own per-stripe size) if no data shard is used.
+  int chunks_count = 0;
+  for (auto& [id, bl] : to_decode) {
+    if (!min.count(id)) continue;
+    if (id < k) {
+      chunks_count = (int)bl.length() / repair_data_per_chunk;
+      break;
+    }
+  }
+  if (chunks_count == 0) {
+    for (auto& [id, bl] : to_decode) {
+      if (!min.count(id)) continue;
+      uint64_t par_size = ec_impl->get_parity_chunk_size(stripe_width, id - k);
+      chunks_count = (int)bl.length() / (int)par_size;
       break;
     }
   }
 
-  for (int i = 0; i < chunks_count; i++) {
+  for (int s = 0; s < chunks_count; s++) {
     map<int, bufferlist> chunks;
-    for (auto j = to_decode.begin();
-	 j != to_decode.end();
-	 ++j) {
-      chunks[j->first].substr_of(j->second, 
-                                 i*repair_data_per_chunk, 
-                                 repair_data_per_chunk);
+    for (auto& [id, bl] : to_decode) {
+      if (!min.count(id)) continue;
+      uint64_t sz  = (id < k)
+        ? (uint64_t)repair_data_per_chunk
+        : ec_impl->get_parity_chunk_size(stripe_width, id - k);
+      chunks[id].substr_of(bl, s * sz, sz);
     }
     map<int, bufferlist> out_bls;
-    r = ec_impl->decode(need, chunks, &out_bls, sinfo.get_chunk_size());
+    r = ec_impl->decode(need, chunks, &out_bls, data_chunk_size);
     ceph_assert(r == 0);
-    for (auto j = out.begin(); j != out.end(); ++j) {
-      ceph_assert(out_bls.count(j->first));
-      ceph_assert(out_bls[j->first].length() == sinfo.get_chunk_size());
-      j->second->claim_append(out_bls[j->first]);
+    for (auto& [id, target] : out) {
+      ceph_assert(out_bls.count(id));
+      uint64_t expected = (id < k)
+        ? data_chunk_size
+        : ec_impl->get_parity_chunk_size(stripe_width, id - k);
+      ceph_assert(out_bls[id].length() == expected);
+      target->claim_append(out_bls[id]);
     }
   }
-  for (auto &&i : out) {
-    ceph_assert(i.second->length() == chunks_count * sinfo.get_chunk_size());
+  for (auto& [id, target] : out) {
+    uint64_t expected = (id < k)
+      ? (uint64_t)chunks_count * data_chunk_size
+      : (uint64_t)chunks_count * ec_impl->get_parity_chunk_size(stripe_width, id - k);
+    ceph_assert(target->length() == expected);
   }
   return 0;
 }
@@ -138,29 +176,30 @@ int ECUtil::encode(
   if (logical_size == 0)
     return 0;
 
-  for (uint64_t i = 0; i < logical_size; i += sinfo.get_stripe_width()) {
+  const int k = ec_impl->get_data_chunk_count();
+  const uint64_t stripe_width = sinfo.get_stripe_width();
+
+  for (uint64_t i = 0; i < logical_size; i += stripe_width) {
     map<int, bufferlist> encoded;
     bufferlist buf;
-    buf.substr_of(in, i, sinfo.get_stripe_width());
+    buf.substr_of(in, i, stripe_width);
     int r = ec_impl->encode(want, buf, &encoded);
     ceph_assert(r == 0);
-    for (map<int, bufferlist>::iterator i = encoded.begin();
-	 i != encoded.end();
-	 ++i) {
-      printf("[ECUtil::encode] i: %d, len1: %d, len2: %ld\n", i->first, i->second.length(), sinfo.get_chunk_size());
-      // ceph_assert(i->second.length() == sinfo.get_chunk_size());
-      (*out)[i->first].claim_append(i->second);
+    for (auto& [id, bl] : encoded) {
+      uint64_t expected = (id < k)
+        ? sinfo.get_chunk_size()
+        : ec_impl->get_parity_chunk_size(stripe_width, id - k);
+      ceph_assert(bl.length() == expected);
+      (*out)[id].claim_append(bl);
     }
   }
 
-  // for (map<int, bufferlist>::iterator i = out->begin();
-  //      i != out->end();
-  //      ++i) {
-  //   ceph_assert(i->second.length() % sinfo.get_chunk_size() == 0);
-  //   ceph_assert(
-  //     sinfo.aligned_chunk_offset_to_logical_offset(i->second.length()) ==
-  //     logical_size);
-  // }
+  for (auto& [id, bl] : *out) {
+    uint64_t chunk_size = (id < k)
+      ? sinfo.get_chunk_size()
+      : ec_impl->get_parity_chunk_size(stripe_width, id - k);
+    ceph_assert(bl.length() % chunk_size == 0);
+  }
   return 0;
 }
 
@@ -173,12 +212,16 @@ void ECUtil::HashInfo::append(uint64_t old_size,
     for (map<int, bufferlist>::iterator i = to_append.begin();
 	 i != to_append.end();
 	 ++i) {
-      ceph_assert(size_to_append == i->second.length());
+      // Parity shards may be larger than data shards for variable-parity codes;
+      // each shard's CRC covers its full actual length.
       ceph_assert((unsigned)i->first < cumulative_shard_hashes.size());
       uint32_t new_hash = i->second.crc32c(cumulative_shard_hashes[i->first]);
       cumulative_shard_hashes[i->first] = new_hash;
     }
   }
+  // size_to_append comes from the first (lowest-id) shard, which is always a
+  // data shard (shard 0).  total_chunk_size tracks data-shard bytes so that
+  // get_total_logical_size() = total_chunk_size * k remains correct.
   total_chunk_size += size_to_append;
 }
 

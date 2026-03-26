@@ -38,6 +38,8 @@ public:
   }
 
   unsigned int get_chunk_size(unsigned int object_size) const override;
+  unsigned int get_parity_chunk_size(unsigned int object_size,
+                                     int parity_idx = 0) const override;
 
   int encode_chunks(const std::set<int> &want_to_encode,
 		    std::map<int, ceph::buffer::list> *encoded) override;

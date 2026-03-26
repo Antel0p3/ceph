@@ -161,6 +161,13 @@ unsigned int ErasureCodeTwotone::get_chunk_size(unsigned int object_size) const
   return padded_length / k;    // bits per chunk
 }
 
+unsigned int ErasureCodeTwotone::get_parity_chunk_size(unsigned int object_size,
+                                                        int parity_idx) const
+{
+  ceph_assert(parity_idx >= 0 && parity_idx < m);
+  return get_chunk_size(object_size) + layout.max_shift[parity_idx] * BYTE_PERCELL;
+}
+
 static size_t twotone_shift(int p, int d, int k, int m) {
     int dd = (m % 2 == 1) ? (m + 1) / 2 : (m / 2);
     int pp = m - 1 - p;
