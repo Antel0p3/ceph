@@ -25,7 +25,8 @@
       "Bash(grep -v \"^$\")",
       "Bash(./bin/ceph health:*)",
       "Bash(chmod +x /root/ceph/build/twotone_robustness.sh)",
-      "Bash(bash twotone_robustness.sh)"
+      "Bash(bash twotone_robustness.sh)",
+      "Bash(chmod +x /root/ceph/build/ec_recovery_compare.sh)"
     ]
   }
 }
