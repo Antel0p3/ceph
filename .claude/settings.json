@@ -26,7 +26,12 @@
       "Bash(./bin/ceph health:*)",
       "Bash(chmod +x /root/ceph/build/twotone_robustness.sh)",
       "Bash(bash twotone_robustness.sh)",
-      "Bash(chmod +x /root/ceph/build/ec_recovery_compare.sh)"
+      "Bash(chmod +x /root/ceph/build/ec_recovery_compare.sh)",
+      "Bash(bash ec_compare.sh)",
+      "Bash(bash ec_compare_new.sh 3 2)",
+      "Bash(grep -r \"AVX\\\\|avx\\\\|__m256\\\\|__m512\\\\|_mm256\\\\|_mm512\\\\|vpclmul\\\\|SIMD\" /root/ceph/src/erasure-code/isa/ --include=*.cc --include=*.h -l)",
+      "Bash(grep -r \"AVX\\\\|avx\\\\|__m256\\\\|__m512\\\\|_mm256\\\\|_mm512\\\\|vpclmul\\\\|gf_vect\\\\|ec_encode\" /root/ceph/src/erasure-code/isa/ --include=*.cc --include=*.h -l)",
+      "Bash(bash ec_compare_new.sh 6 3 2048 1000 1)"
     ]
   }
 }

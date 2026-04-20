@@ -299,53 +299,97 @@ int ErasureCodeTwotone::decode_chunks(const set<int> &want_to_read,
 void ErasureCodeTwotoneImpl::twotone_encode(char **data, char **coding, int blocksize)
 {
   const size_t bytes = (size_t)blocksize;
-
-  // Zero all parity buffers upfront
-  for (int p = 0; p < m; ++p)
-    memset(coding[p], 0, bytes + layout.max_shift[p] * BYTE_PERCELL);
-
-  // Tile-based data-outer loop.
-  //
-  // For each TILE_BYTES slice of data[d], XOR it into all m parity buffers
-  // before moving on.  Because max_shift << TILE_BYTES, each parity region
-  // touched per tile is only ~TILE_BYTES wide and stays hot in L1 across all
-  // d iterations — eliminating the DRAM re-load of coding[p] that the plain
-  // chunk-sized loop incurred.
-  //
-  // Memory traffic: (k + 2m) × chunk_bytes  vs  (k×m×2 + m) × chunk_bytes
-  // before — matches ISA-L's access efficiency for all k/m ratios.
   constexpr size_t TILE_BYTES = 4096;
 
-  // k=6, m=3 specialization: shifts are p0=[0..5], p1=[0..0], p2=[5..0] × 16 B.
-  // xor_buf3 loads data[d] tile once and writes all 3 parities simultaneously,
-  // reducing data-register traffic by 3× vs three separate xor_buf calls.
-  if (k == 6 && m == 3) {
-    for (int d = 0; d < 6; ++d) {
-      // Shift base pointers once per d; tile_off is then a plain addition.
-      char* p0  = coding[0] + (size_t)d       * BYTE_PERCELL;   // shift = d
-      char* p1  = coding[1];                                     // shift = 0
-      char* p2  = coding[2] + (size_t)(5 - d) * BYTE_PERCELL;   // shift = 5-d
-      const char* src = data[d];
-      for (size_t tile_off = 0; tile_off < bytes; tile_off += TILE_BYTES)
-        xor_buf3(p0 + tile_off, p1 + tile_off, p2 + tile_off,
-                 src + tile_off, std::min(TILE_BYTES, bytes - tile_off));
+  // ── Optimisation 1: init each parity from the data chunk with shift=0 ────
+  //
+  // twotone_shift() guarantees that for every parity p there exists at least
+  // one data chunk d* where shift[p][d*] = 0 (data and parity are aligned).
+  // Copying data[d*] directly into coding[p] is equivalent to
+  //   memset(coding[p], 0, ...) followed by xor(coding[p], data[d*], ...)
+  // but does it in a single pass, eliminating a full chunk-sized zero-write.
+  // Only the small tail extension (max_shift[p] * BYTE_PERCELL bytes) needs
+  // explicit zeroing afterwards.
+  //
+  // twotone_shift() cases:
+  //   pp >= dd  →  shift[p][d] = (pp-dd+1)*d  →  d=0 gives shift=0
+  //   pp <  dd  →  shift[p][d] = (dd-1-pp)*(k-1-d)  →  d=k-1 gives shift=0
+  int init_d[m]; // init_d[p]: which data chunk initialised coding[p]
+  for (int p = 0; p < m; ++p) {
+    init_d[p] = -1;
+    for (int d = 0; d < k; ++d) {
+      if (layout.shift[p * k + d] == 0) { init_d[p] = d; break; }
     }
-    return;
+    ceph_assert(init_d[p] >= 0);
+    memcpy(coding[p], data[init_d[p]], bytes);
+    if (layout.max_shift[p] > 0)
+      memset(coding[p] + bytes, 0, layout.max_shift[p] * BYTE_PERCELL);
   }
 
-  // General tile-based data-outer loop for all other k/m.
+  // ── Optimisation 2: fused tile XOR — load data[d] once, XOR all parities ─
+  //
+  // For each data chunk d, only the parities NOT initialised from d need an
+  // XOR contribution.  Loading the data tile into a SIMD register once and
+  // writing it to all npp active parities reduces data-register traffic by
+  // up to m× versus m separate xor_buf calls.
   for (int d = 0; d < k; ++d) {
+    // Collect base pointers (already shifted) of parities that need data[d].
+    char* pp[m];
+    int npp = 0;
+    for (int p = 0; p < m; ++p) {
+      if (init_d[p] != d)
+        pp[npp++] = coding[p] + layout.shift[p * k + d] * BYTE_PERCELL;
+    }
+    if (npp == 0) continue;
+
+    const char* src = data[d];
     for (size_t tile_off = 0; tile_off < bytes; tile_off += TILE_BYTES) {
       const size_t tlen = std::min(TILE_BYTES, bytes - tile_off);
-      for (int p = 0; p < m; ++p) {
-        const size_t shift_bytes = layout.shift[p * k + d] * BYTE_PERCELL;
-        xor_buf(coding[p] + shift_bytes + tile_off, data[d] + tile_off, tlen);
+#if defined(__AVX2__)
+      size_t i = 0;
+      // 4-way unrolled: 4 independent accumulators keep the load/XOR/store
+      // pipeline full and reduce loop-overhead by 4×.
+      for (; i + 128 <= tlen; i += 128) {
+        __m256i v0 = _mm256_loadu_si256((const __m256i*)(src + tile_off + i +  0));
+        __m256i v1 = _mm256_loadu_si256((const __m256i*)(src + tile_off + i + 32));
+        __m256i v2 = _mm256_loadu_si256((const __m256i*)(src + tile_off + i + 64));
+        __m256i v3 = _mm256_loadu_si256((const __m256i*)(src + tile_off + i + 96));
+        for (int j = 0; j < npp; ++j) {
+          char* dst = pp[j] + tile_off + i;
+          _mm256_storeu_si256((__m256i*)(dst +  0), _mm256_xor_si256(_mm256_loadu_si256((const __m256i*)(dst +  0)), v0));
+          _mm256_storeu_si256((__m256i*)(dst + 32), _mm256_xor_si256(_mm256_loadu_si256((const __m256i*)(dst + 32)), v1));
+          _mm256_storeu_si256((__m256i*)(dst + 64), _mm256_xor_si256(_mm256_loadu_si256((const __m256i*)(dst + 64)), v2));
+          _mm256_storeu_si256((__m256i*)(dst + 96), _mm256_xor_si256(_mm256_loadu_si256((const __m256i*)(dst + 96)), v3));
+        }
       }
+      for (; i + 32 <= tlen; i += 32) {
+        __m256i v = _mm256_loadu_si256((const __m256i*)(src + tile_off + i));
+        for (int j = 0; j < npp; ++j) {
+          char* dst = pp[j] + tile_off + i;
+          _mm256_storeu_si256((__m256i*)dst,
+              _mm256_xor_si256(_mm256_loadu_si256((const __m256i*)dst), v));
+        }
+      }
+      for (; i + 16 <= tlen; i += 16) {
+        __m128i v = _mm_loadu_si128((const __m128i*)(src + tile_off + i));
+        for (int j = 0; j < npp; ++j) {
+          char* dst = pp[j] + tile_off + i;
+          _mm_storeu_si128((__m128i*)dst,
+              _mm_xor_si128(_mm_loadu_si128((const __m128i*)dst), v));
+        }
+      }
+#else
+      for (int j = 0; j < npp; ++j)
+        xor_buf(pp[j] + tile_off, src + tile_off, tlen);
+#endif
     }
   }
 }
 
-// Reconstruct missing parity chunks — same xor_buf pattern as encode.
+// Reconstruct missing parity chunks.
+// Uses init-from-d_zero (same trick as twotone_encode) to avoid a full
+// memset pass: the data chunk whose shift is 0 is memcpy'd as the seed,
+// then the remaining chunks are XOR'd in — saves one chunk-sized write.
 static void reconstruct_parity(int k, int m,
                                 const TwotoneLayout &layout,
                                 size_t chunk_bytes,
@@ -354,10 +398,21 @@ static void reconstruct_parity(int k, int m,
 {
     for (int p = 0; p < m; ++p) {
         if (!missing_chunk[k + p]) continue;
-        const size_t parity_bytes = chunk_bytes + layout.max_shift[p] * BYTE_PERCELL;
+        const size_t parity_bytes __attribute__((unused)) = chunk_bytes + layout.max_shift[p] * BYTE_PERCELL;
         char* parity = P[p];
-        memset(parity, 0, parity_bytes);
+
+        // Find d* where shift[p][d*] == 0 (guaranteed by twotone_shift()).
+        int d_zero = -1;
         for (int d = 0; d < k; ++d) {
+            if (layout.shift[p * k + d] == 0) { d_zero = d; break; }
+        }
+        // Init from d_zero (equiv. to memset-0 + xor, but in one pass).
+        memcpy(parity, D[d_zero], chunk_bytes);
+        if (layout.max_shift[p] > 0)
+            memset(parity + chunk_bytes, 0, layout.max_shift[p] * BYTE_PERCELL);
+
+        for (int d = 0; d < k; ++d) {
+            if (d == d_zero) continue;
             const size_t shift_bytes = layout.shift[p * k + d] * BYTE_PERCELL;
             xor_buf(parity + shift_bytes, D[d], chunk_bytes);
         }
@@ -418,8 +473,58 @@ int ErasureCodeTwotoneImpl::twotone_decode(int *erasures, char **data, char **co
         // parity is zero, so shift_miss_bytes==0 and all delta[d]==0.
         // No boundary clipping ever occurs — inner loop is plain k-source XOR.
         // For k=6,m=3 this activates whenever p=1 is available (max_shift[1]=0).
+        //
+        // Optimised: accumulate all k sources in registers per tile position,
+        // then non-temporal-store directly to data[d_miss].  Eliminates the
+        // scratch-buffer round-trip and avoids polluting caches with the output.
         // ------------------------------------------------------------------
         if (layout.max_shift[p_use] == 0) {
+#if defined(__AVX2__)
+            char* out = data[d_miss];
+            const char* par = coding[p_use];
+            for (size_t tile_off = 0; tile_off < chunk_bytes; tile_off += TILE_BYTES) {
+                const size_t tlen = std::min(TILE_BYTES, chunk_bytes - tile_off);
+                size_t i = 0;
+                for (; i + 128 <= tlen; i += 128) {
+                    __m256i r0 = _mm256_loadu_si256((const __m256i*)(par + tile_off + i +  0));
+                    __m256i r1 = _mm256_loadu_si256((const __m256i*)(par + tile_off + i + 32));
+                    __m256i r2 = _mm256_loadu_si256((const __m256i*)(par + tile_off + i + 64));
+                    __m256i r3 = _mm256_loadu_si256((const __m256i*)(par + tile_off + i + 96));
+                    for (int d = 0; d < k; ++d) {
+                        if (d == d_miss) continue;
+                        const char* s = data[d] + tile_off;
+                        r0 = _mm256_xor_si256(r0, _mm256_loadu_si256((const __m256i*)(s + i +  0)));
+                        r1 = _mm256_xor_si256(r1, _mm256_loadu_si256((const __m256i*)(s + i + 32)));
+                        r2 = _mm256_xor_si256(r2, _mm256_loadu_si256((const __m256i*)(s + i + 64)));
+                        r3 = _mm256_xor_si256(r3, _mm256_loadu_si256((const __m256i*)(s + i + 96)));
+                    }
+                    _mm256_stream_si256((__m256i*)(out + tile_off + i +  0), r0);
+                    _mm256_stream_si256((__m256i*)(out + tile_off + i + 32), r1);
+                    _mm256_stream_si256((__m256i*)(out + tile_off + i + 64), r2);
+                    _mm256_stream_si256((__m256i*)(out + tile_off + i + 96), r3);
+                }
+                for (; i + 32 <= tlen; i += 32) {
+                    __m256i r = _mm256_loadu_si256((const __m256i*)(par + tile_off + i));
+                    for (int d = 0; d < k; ++d) {
+                        if (d == d_miss) continue;
+                        r = _mm256_xor_si256(r, _mm256_loadu_si256((const __m256i*)(data[d] + tile_off + i)));
+                    }
+                    _mm256_stream_si256((__m256i*)(out + tile_off + i), r);
+                }
+                for (; i + 16 <= tlen; i += 16) {
+                    __m128i r = _mm_loadu_si128((const __m128i*)(par + tile_off + i));
+                    for (int d = 0; d < k; ++d) {
+                        if (d == d_miss) continue;
+                        r = _mm_xor_si128(r, _mm_loadu_si128((const __m128i*)(data[d] + tile_off + i)));
+                    }
+                    _mm_stream_si128((__m128i*)(out + tile_off + i), r);
+                }
+            }
+            _mm_sfence();
+#else
+            if (scratch_buf.size() < TILE_BYTES)
+                scratch_buf.resize(TILE_BYTES);
+            char* tile = scratch_buf.data();
             for (size_t tile_off = 0; tile_off < chunk_bytes; tile_off += TILE_BYTES) {
                 const size_t tlen = std::min(TILE_BYTES, chunk_bytes - tile_off);
                 memcpy(tile, coding[p_use] + tile_off, tlen);
@@ -429,6 +534,7 @@ int ErasureCodeTwotoneImpl::twotone_decode(int *erasures, char **data, char **co
                 }
                 memcpy(data[d_miss] + tile_off, tile, tlen);
             }
+#endif
             reconstruct_parity(k, m, layout, chunk_bytes, data, coding, missing_chunk);
             return 0;
         }
