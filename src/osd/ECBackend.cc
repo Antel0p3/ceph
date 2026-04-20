@@ -643,18 +643,28 @@ void ECBackend::RecoveryBackend::continue_recovery_op(
 		 << ", after_progress=" << after_progress
 		 << ", pop.data.length()=" << pop.data.length()
 		 << ", size=" << op.obc->obs.oi.size << dendl;
-	ceph_assert(
-	  pop.data.length() ==
-	  sinfo.aligned_logical_offset_to_chunk_offset(
-	    after_progress.data_recovered_to -
-	    op.recovery_progress.data_recovered_to)
-	  );
-	if (pop.data.length())
-	  pop.data_included.insert(
-	    sinfo.aligned_logical_offset_to_chunk_offset(
-	      op.recovery_progress.data_recovered_to),
-	    pop.data.length()
-	    );
+	{
+	  // For variable-parity codes, parity shards have a larger per-stripe
+	  // chunk size than data shards.  Compute the expected size and the
+	  // shard-file byte offset using the per-shard chunk size.
+	  int shard_id = (int)mi->shard;
+	  int k_count = (int)ec_impl->get_data_chunk_count();
+	  uint64_t logical_delta =
+	    after_progress.data_recovered_to - op.recovery_progress.data_recovered_to;
+	  uint64_t n_stripes = logical_delta / sinfo.get_stripe_width();
+	  uint64_t chunk_size_for_shard = (shard_id < k_count)
+	    ? sinfo.get_chunk_size()
+	    : ec_impl->get_parity_chunk_size(sinfo.get_stripe_width(),
+					     shard_id - k_count);
+	  ceph_assert(pop.data.length() == n_stripes * chunk_size_for_shard);
+	  if (pop.data.length()) {
+	    uint64_t start_stripe =
+	      op.recovery_progress.data_recovered_to / sinfo.get_stripe_width();
+	    pop.data_included.insert(
+	      start_stripe * chunk_size_for_shard,
+	      pop.data.length());
+	  }
+	}
 	if (op.recovery_progress.first) {
 	  pop.attrset = op.xattrs;
 	}
@@ -1701,11 +1711,17 @@ void ECBackend::rollback_append(
   ObjectStore::Transaction *t)
 {
   ceph_assert(old_size % sinfo.get_stripe_width() == 0);
+  int shard_id = (int)get_parent()->whoami_shard().shard;
+  int k_count = (int)ec_impl->get_data_chunk_count();
+  uint64_t n_stripes = old_size / sinfo.get_stripe_width();
+  uint64_t truncate_at = (shard_id < k_count)
+    ? sinfo.aligned_logical_offset_to_chunk_offset(old_size)
+    : n_stripes * ec_impl->get_parity_chunk_size(sinfo.get_stripe_width(),
+						  shard_id - k_count);
   t->truncate(
     coll,
     ghobject_t(hoid, ghobject_t::NO_GEN, get_parent()->whoami_shard().shard),
-    sinfo.aligned_logical_offset_to_chunk_offset(
-      old_size));
+    truncate_at);
 }
 
 int ECBackend::be_deep_scrub(
