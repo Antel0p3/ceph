@@ -47,11 +47,13 @@ function(add_npm_options)
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 endfunction(add_npm_options)
 
+set(frontend_node_modules_stamp "${CMAKE_CURRENT_BINARY_DIR}/node_modules.stamp")
+
 if(WITH_SYSTEM_NPM)
   set(mgr-dashboard-nodeenv-dir )
   set(nodeenv "")
   add_custom_target(mgr-dashboard-frontend-deps
-    DEPENDS node_modules
+    DEPENDS ${frontend_node_modules_stamp}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 else(WITH_SYSTEM_NPM)
   set(mgr-dashboard-nodeenv-dir ${CMAKE_CURRENT_BINARY_DIR}/node-env)
@@ -75,16 +77,21 @@ else(WITH_SYSTEM_NPM)
     NODEENV_DIR ${mgr-dashboard-nodeenv-dir}
     TARGET mgr-dashboard-nodeenv
     OPTION cache=${mgr-dashboard-nodeenv-dir}/.npm
+    OPTION fetch-retries=10
+    OPTION fetch-retry-factor=2
+    OPTION fetch-retry-mintimeout=20000
+    OPTION fetch-retry-maxtimeout=120000
+    OPTION maxsockets=1
+    OPTION prefer-offline=true
     ${npm_registry_opts})
   add_custom_target(mgr-dashboard-frontend-deps
-    DEPENDS node_modules mgr-dashboard-nodeenv
+    DEPENDS ${frontend_node_modules_stamp} mgr-dashboard-nodeenv
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 endif(WITH_SYSTEM_NPM)
-
 add_npm_command(
-  OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/node_modules"
-  COMMAND CYPRESS_CACHE_FOLDER=${CMAKE_SOURCE_DIR}/build/src/pybind/mgr/dashboard/cypress NG_CLI_ANALYTICS=false npm ci -f ${mgr-dashboard-userconfig}
-  DEPENDS package.json
+  OUTPUT "${frontend_node_modules_stamp}"
+  COMMAND CYPRESS_CACHE_FOLDER=${CMAKE_SOURCE_DIR}/build/src/pybind/mgr/dashboard/cypress NG_CLI_ANALYTICS=false npm ci -f ${mgr-dashboard-userconfig} && ${CMAKE_COMMAND} -E touch ${frontend_node_modules_stamp}
+  DEPENDS package.json package-lock.json
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMENT "dashboard frontend dependencies are being installed"
   ${nodeenv})
@@ -117,7 +124,7 @@ endif()
 add_npm_command(
   OUTPUT "${frontend_dist_dir}"
   COMMAND DASHBOARD_FRONTEND_LANGS="${DASHBOARD_FRONTEND_LANGS}" npm run build:localize -- ${npm_args}
-  DEPENDS ${frontend_src} node_modules
+  DEPENDS ${frontend_src} ${frontend_node_modules_stamp}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMENT "dashboard frontend is being created"
   ${nodeenv})

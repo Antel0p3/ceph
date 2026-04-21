@@ -302,10 +302,10 @@ Scrub::scrub_schedule_t ScrubQueue::adjust_target_time(
     dout(20) << fmt::format(
 		  "not-must. Was:{:s} {{min:{}/{} max:{}/{} ratio:{}}} "
 		  "Adjusted:{:s} ({:s})",
-		  times.proposed_time, fmt::group_digits(times.min_interval),
-		  fmt::group_digits(conf()->osd_scrub_min_interval),
-		  fmt::group_digits(times.max_interval),
-		  fmt::group_digits(conf()->osd_scrub_max_interval),
+		  times.proposed_time, times.min_interval,
+		  conf()->osd_scrub_min_interval,
+		  times.max_interval,
+		  conf()->osd_scrub_max_interval,
 		  conf()->osd_scrub_interval_randomize_ratio,
 		  sched_n_dead.scheduled_at, sched_n_dead.deadline)
 	     << dendl;

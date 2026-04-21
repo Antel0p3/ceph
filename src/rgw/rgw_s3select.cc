@@ -420,11 +420,6 @@ int RGWSelectObj_ObjStore_S3::run_s3select_on_csv(const char* query, const char*
 
   m_s3_csv_object.set_csv_query(&s3select_syntax, csv);
 
-  m_s3_csv_object.set_external_system_functions(fp_s3select_continue,
-						fp_s3select_result_format,
-						fp_result_header_format,
-						fp_debug_mesg);
-
   if (s3select_syntax.get_error_description().empty() == false) {
     //error-flow (syntax-error)
     m_aws_response_handler.send_error_response_rgw_formatter(s3select_syntax_error,s3select_syntax.get_error_description().c_str(),s3select_resource_id);
@@ -436,11 +431,11 @@ int RGWSelectObj_ObjStore_S3::run_s3select_on_csv(const char* query, const char*
       input = "";
     }
     fp_result_header_format(m_aws_response_handler.get_sql_result());
-    length_before_processing = m_s3_csv_object.get_return_result_size();
+    length_before_processing = m_aws_response_handler.get_sql_result().size();
     //query is correct(syntax), processing is starting.
     status = m_s3_csv_object.run_s3select_on_stream(m_aws_response_handler.get_sql_result(), input, input_length, m_object_size_for_processing);
-    length_post_processing = m_s3_csv_object.get_return_result_size();
-    m_aws_response_handler.update_total_bytes_returned( m_s3_csv_object.get_return_result_size() );
+    length_post_processing = m_aws_response_handler.get_sql_result().size();
+    m_aws_response_handler.update_total_bytes_returned(length_post_processing);
 
     if (status < 0) {
       //error flow(processing-time)
@@ -471,11 +466,6 @@ int RGWSelectObj_ObjStore_S3::run_s3select_on_parquet(const char* query)
     //parsing the SQL statement.
     s3select_syntax.parse_query(m_sql_query.c_str());
 
-  m_s3_parquet_object.set_external_system_functions(fp_s3select_continue,
-						fp_s3select_result_format,
-						fp_result_header_format,
-						fp_debug_mesg);
-
     try {
       //at this stage the Parquet-processing requires for the meta-data that reside on Parquet object 
       m_s3_parquet_object.set_parquet_object(std::string("s3object"), &s3select_syntax, &m_rgw_api);
@@ -497,7 +487,9 @@ int RGWSelectObj_ObjStore_S3::run_s3select_on_parquet(const char* query)
   } else {
     fp_result_header_format(m_aws_response_handler.get_sql_result());
     //at this stage the Parquet-processing "takes control", it keep calling to s3-range-request according to the SQL statement.
-    status = m_s3_parquet_object.run_s3select_on_object(m_aws_response_handler.get_sql_result());
+    status = m_s3_parquet_object.run_s3select_on_object(m_aws_response_handler.get_sql_result(),
+                                                        fp_s3select_result_format,
+                                                        fp_result_header_format);
     if (status < 0) {
 
       fp_chunked_transfer_encoding();
@@ -512,13 +504,6 @@ int RGWSelectObj_ObjStore_S3::run_s3select_on_parquet(const char* query)
 
 int RGWSelectObj_ObjStore_S3::run_s3select_on_json(const char* query, const char* input, size_t input_length)
 {
-  int status = 0;
-  
-  m_s3_csv_object.set_external_system_functions(fp_s3select_continue,
-						fp_s3select_result_format,
-						fp_result_header_format,
-						fp_debug_mesg);
-
   m_aws_response_handler.init_response();
 
   //the JSON data-type should be(currently) only DOCUMENT
@@ -529,60 +514,15 @@ int RGWSelectObj_ObjStore_S3::run_s3select_on_json(const char* query, const char
       s3select_resource_id);
     ldpp_dout(this, 10) << s3select_json_error_msg << dendl;
     return -EINVAL;
-  } 
-
-  //parsing the SQL statement
-  s3select_syntax.parse_query(m_sql_query.c_str());
-  if (s3select_syntax.get_error_description().empty() == false) {
-  //SQL statement is wrong(syntax).
-    m_aws_response_handler.send_error_response_rgw_formatter(s3select_syntax_error,
-      s3select_syntax.get_error_description().c_str(),
-      s3select_resource_id);
-    ldpp_dout(this, 10) << "s3-select query: failed to prase query; {" << s3select_syntax.get_error_description() << "}" << dendl;
-    return -EINVAL;
-  }
-    
-  //initializing json processor
-  json_object::csv_definitions output_definition;
-  m_s3_json_object.set_json_query(&s3select_syntax,output_definition);
-
-  if (input == nullptr) {
-    input = "";
-  }
-  m_aws_response_handler.init_success_response();
-  uint32_t length_before_processing = m_aws_response_handler.get_sql_result().size();
-  //query is correct(syntax), processing is starting.
-  try {
-    status = m_s3_json_object.run_s3select_on_stream(m_aws_response_handler.get_sql_result(), input, input_length, m_object_size_for_processing);
-  } catch(base_s3select_exception& e) {
-    ldpp_dout(this, 10) << "S3select: failed to process JSON object: " << e.what() << dendl;
-    m_aws_response_handler.get_sql_result().append(e.what());
-    m_aws_response_handler.send_error_response_rgw_formatter(s3select_processTime_error,
-	e.what(),
-     	s3select_resource_id);
-    return -EINVAL;
-  }
-  uint32_t length_post_processing = m_aws_response_handler.get_sql_result().size();
-  m_aws_response_handler.update_total_bytes_returned(length_post_processing - length_before_processing);
-  if (status < 0) {
-    //error flow(processing-time)
-    m_aws_response_handler.send_error_response_rgw_formatter(s3select_processTime_error,
-	m_s3_json_object.get_error_description().c_str(),
-     	s3select_resource_id);
-    ldpp_dout(this, 10) << "s3-select query: failed to process query; {" << m_s3_json_object.get_error_description() << "}" << dendl;
-    return -EINVAL;
-  }
-  fp_chunked_transfer_encoding();
-
-  if (length_post_processing-length_before_processing != 0) {
-    m_aws_response_handler.send_success_response();
-  }
-  if (enable_progress == true) {
-    m_aws_response_handler.init_progress_response();
-    m_aws_response_handler.send_progress_response();
   }
 
-  return status;
+  const char* s3select_json_error_msg =
+    "s3-select query: JSON input serialization is not supported by the vendored s3select engine in this build";
+  m_aws_response_handler.send_error_response_rgw_formatter(s3select_json_error,
+    s3select_json_error_msg,
+    s3select_resource_id);
+  ldpp_dout(this, 10) << s3select_json_error_msg << dendl;
+  return -EINVAL;
 }
 
 int RGWSelectObj_ObjStore_S3::handle_aws_cli_parameters(std::string& sql_query)
@@ -897,9 +837,6 @@ int RGWSelectObj_ObjStore_S3::csv_processing(bufferlist& bl, off_t ofs, off_t le
     if (status<0) {
 	  return -EINVAL;
     }
-    if (m_s3_csv_object.is_sql_limit_reached()) {
-	  break;
-    }
     buff_no++;
   }//for
   }//else
@@ -907,18 +844,13 @@ int RGWSelectObj_ObjStore_S3::csv_processing(bufferlist& bl, off_t ofs, off_t le
   ldpp_dout(this, 10) << "s3select : m_aws_response_handler.get_processed_size() " << m_aws_response_handler.get_processed_size() 
   << " m_object_size_for_processing " << uint64_t(m_object_size_for_processing) << dendl;
 
-  if (m_aws_response_handler.get_processed_size() >= uint64_t(m_object_size_for_processing) || m_s3_csv_object.is_sql_limit_reached()) {
+  if (m_aws_response_handler.get_processed_size() >= uint64_t(m_object_size_for_processing)) {
     if (status >=0) {
       m_aws_response_handler.init_stats_response();
       m_aws_response_handler.send_stats_response();
       m_aws_response_handler.init_end_response();
       ldpp_dout(this, 10) << "s3select : reached the end of query request : aws_response_handler.get_processed_size() " << m_aws_response_handler.get_processed_size()
       << "m_object_size_for_processing : " << m_object_size_for_processing << dendl;
-    }
-    if (m_s3_csv_object.is_sql_limit_reached()) {
-    //stop fetching chunks
-    ldpp_dout(this, 10) << "s3select : reached the limit :" << m_aws_response_handler.get_processed_size()  << dendl;
-    status = -ENOENT;
     }
   }
 
@@ -960,14 +892,11 @@ int RGWSelectObj_ObjStore_S3::json_processing(bufferlist& bl, off_t ofs, off_t l
 	status = -EINVAL;
         break;
       }
-      if (m_s3_json_object.is_sql_limit_reached()) {
-	break;
-      }
       i++;
     }//for
   }//else
 
-  if (status>=0 && (m_aws_response_handler.get_processed_size() == uint64_t(m_object_size_for_processing) || m_s3_json_object.is_sql_limit_reached())) {
+  if (status>=0 && m_aws_response_handler.get_processed_size() == uint64_t(m_object_size_for_processing)) {
     //flush the internal JSON buffer(upon last chunk)
     status = run_s3select_on_json(m_sql_query.c_str(), nullptr, 0);
     if (status<0) {
@@ -977,11 +906,6 @@ int RGWSelectObj_ObjStore_S3::json_processing(bufferlist& bl, off_t ofs, off_t l
       m_aws_response_handler.init_stats_response();
       m_aws_response_handler.send_stats_response();
       m_aws_response_handler.init_end_response();
-    }
-    if (m_s3_json_object.is_sql_limit_reached()){
-      //stop fetching chunks
-      status = -ENOENT;
-      ldpp_dout(this, 10) << "s3select : reached the limit :" << m_aws_response_handler.get_processed_size()  << dendl;
     }
   }
   return status;
@@ -1016,4 +940,3 @@ int RGWSelectObj_ObjStore_S3::send_response_data(bufferlist& bl, off_t ofs, off_
   }
   return csv_processing(bl,ofs,len);
 }
-

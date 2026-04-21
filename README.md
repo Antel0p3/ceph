@@ -193,7 +193,8 @@ cluster:
 
 	cd build
 	ninja vstart        # builds just enough to run vstart
-	../src/vstart.sh --debug --new -x --localhost --bluestore
+	ninja ec_twotone unittest_erasure_code_twotone ceph_erasure_code_benchmark ec_jerasure ec_isa
+    ../src/vstart.sh --debug --new -x --localhost --bluestore
 	./bin/ceph -s
 
 Most Ceph commands are available in the `bin/` directory. For example:

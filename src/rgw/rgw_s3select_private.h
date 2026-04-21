@@ -192,7 +192,6 @@ private:
 #ifdef _ARROW_EXIST
   s3selectEngine::parquet_object m_s3_parquet_object;
 #endif
-  s3selectEngine::json_object m_s3_json_object;
   std::string m_column_delimiter;
   std::string m_quot;
   std::string m_row_delimiter;
@@ -283,4 +282,3 @@ private:
 
   void shape_chunk_per_trino_requests(const char*, off_t& ofs, off_t& len);
 };
-
