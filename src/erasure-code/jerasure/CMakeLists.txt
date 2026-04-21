@@ -78,7 +78,10 @@ set(jerasure_srcs
   jerasure/src/liberation.c
   jerasure/src/reed_sol.c
   jerasure_init.cc)
+set(CEPH_SKIP_AUTO_BOOST_DEP ON)
 add_library(jerasure_objs OBJECT ${jerasure_srcs}) 
+unset(CEPH_SKIP_AUTO_BOOST_DEP)
+add_dependencies(jerasure_objs legacy-option-headers)
 
 set(ec_jerasure_objs
   $<TARGET_OBJECTS:gf-complete_objs>

@@ -8,8 +8,11 @@ set(twotone_utils_srcs
   ErasureCodeTwotone.cc
   )
 
+set(CEPH_SKIP_AUTO_BOOST_DEP ON)
 add_library(twotone_utils OBJECT ${twotone_utils_srcs})
+unset(CEPH_SKIP_AUTO_BOOST_DEP)
 target_compile_options(twotone_utils PRIVATE -O3 -march=native)
+add_dependencies(twotone_utils legacy-option-headers)
 
 set(ec_twotone_objs
   $<TARGET_OBJECTS:gf-complete_objs>

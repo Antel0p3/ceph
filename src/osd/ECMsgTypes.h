@@ -15,7 +15,7 @@
 #ifndef ECBMSGTYPES_H
 #define ECBMSGTYPES_H
 
-#include <fmt/format.h>
+#include <fmt/ostream.h>
 
 #include "osd_types.h"
 #include "include/buffer.h"
@@ -139,9 +139,11 @@ std::ostream &operator<<(
 std::ostream &operator<<(
   std::ostream &lhs, const ECSubReadReply &rhs);
 
+#if FMT_VERSION >= 90000
 template <> struct fmt::formatter<ECSubWrite> : fmt::ostream_formatter {};
 template <> struct fmt::formatter<ECSubWriteReply> : fmt::ostream_formatter {};
 template <> struct fmt::formatter<ECSubRead> : fmt::ostream_formatter {};
 template <> struct fmt::formatter<ECSubReadReply> : fmt::ostream_formatter {};
+#endif
 
 #endif

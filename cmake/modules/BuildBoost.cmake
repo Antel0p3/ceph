@@ -296,12 +296,15 @@ endfunction()
 function(add_library target)
   _add_library(${target} ${ARGN})
   # can't add dependencies to aliases or imported libraries
-  if (NOT ";${ARGN};" MATCHES ";(ALIAS|IMPORTED);")
+  if (NOT CEPH_SKIP_AUTO_BOOST_DEP
+      AND NOT ";${ARGN};" MATCHES ";(ALIAS|IMPORTED);")
     maybe_add_boost_dep(${target})
   endif()
 endfunction()
 
 function(add_executable target)
   _add_executable(${target} ${ARGN})
-  maybe_add_boost_dep(${target})
+  if(NOT CEPH_SKIP_AUTO_BOOST_DEP)
+    maybe_add_boost_dep(${target})
+  endif()
 endfunction()
