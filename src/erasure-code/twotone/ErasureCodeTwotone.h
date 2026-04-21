@@ -6,6 +6,12 @@
 struct TwotoneLayout {
   std::vector<size_t> max_shift;          // per parity
   std::vector<size_t> shift;              // p*k + d
+  std::vector<size_t> shift_bytes;        // p*k + d, in bytes
+  std::vector<int> init_data;             // per parity, data chunk with zero shift
+  int zero_shift_parity = -1;             // parity index whose shifts are all zero
+  std::vector<unsigned> data_plan_off;    // per data chunk, flattened plan offsets
+  std::vector<int> data_plan_parity;      // flattened parity indices to XOR into
+  std::vector<size_t> data_plan_shift_bytes; // flattened destination byte offsets
 };
 
 class ErasureCodeTwotone : public ceph::ErasureCode {

@@ -175,63 +175,38 @@ declare -A SIZES=(
 )
 
 # Recovery requires at least k+m+1 OSDs (1 spare slot for remapping after failure):
-#   k=2,m=2 → k+m=4 → 6 OSDs ✓
-#   k=3,m=2 → k+m=5 → 6 OSDs ✓
-#   k=4,m=2 → k+m=6 → 8 OSDs  (6 would leave no spare after 1 failure)
-#   k=6,m=3 → k+m=9 → 10 OSDs (9 would leave no spare after 1 failure)
+#   k=6,m=2 → k+m=8  → 10 OSDs
+#   k=6,m=3 → k+m=9  → 10 OSDs
+#   k=8,m=3 → k+m=11 → 12 OSDs
 
-# ─────────────────────────────────────────────────────────────────────────────
-banner "PHASE 1a: k=2,m=2  k=3,m=2  (6 OSDs)"
-start_cluster 6
+run_config() {
+    local k=$1 m=$2
+    local pool="tt-k${k}m${m}"
 
-for km in "2 2" "3 2"; do
-    k=${km% *}; m=${km#* }
-    POOL="tt-k${k}m${m}"
-    info "Creating pool $POOL (k=$k m=$m)"
-    make_pool "$POOL" "$k" "$m"
+    info "Creating pool $pool (k=$k m=$m)"
+    make_pool "$pool" "$k" "$m"
 
     for label in 4K 64K 1M 4M; do
-        test_write_read "$POOL" "obj_${label}" "$label" "${SIZES[$label]}"
+        test_write_read "$pool" "obj_${label}" "$label" "${SIZES[$label]}"
     done
 
-    test_bench "$POOL" $((4*1024*1024)) "4M"
-    test_recovery "$POOL" "$k" "$m"
+    test_bench "$pool" $((4*1024*1024)) "4M"
+    test_recovery "$pool" "$k" "$m"
     sleep 5
-done
+}
 
 # ─────────────────────────────────────────────────────────────────────────────
-banner "PHASE 1b: k=4,m=2  (8 OSDs — needs k+m+1=7 for recovery)"
-start_cluster 8
-
-for km in "4 2"; do
-    k=${km% *}; m=${km#* }
-    POOL="tt-k${k}m${m}"
-    info "Creating pool $POOL (k=$k m=$m)"
-    make_pool "$POOL" "$k" "$m"
-
-    for label in 4K 64K 1M 4M; do
-        test_write_read "$POOL" "obj_${label}" "$label" "${SIZES[$label]}"
-    done
-
-    test_bench "$POOL" $((4*1024*1024)) "4M"
-    test_recovery "$POOL" "$k" "$m"
-    sleep 5
-done
-
-# ─────────────────────────────────────────────────────────────────────────────
-banner "PHASE 2: k=6,m=3  (10 OSDs — needs k+m+1=10 for recovery)"
+banner "PHASE 1: k=6,m=2  k=6,m=3  (10 OSDs)"
 start_cluster 10
 
-POOL="tt-k6m3"
-info "Creating pool $POOL (k=6 m=3)"
-make_pool "$POOL" 6 3
-
-for label in 4K 64K 1M 4M; do
-    test_write_read "$POOL" "obj_${label}" "$label" "${SIZES[$label]}"
+for km in "6 2" "6 3"; do
+    run_config ${km% *} ${km#* }
 done
 
-test_bench "$POOL" $((4*1024*1024)) "4M"
-test_recovery "$POOL" 6 3
+# ─────────────────────────────────────────────────────────────────────────────
+banner "PHASE 2: k=8,m=3  (12 OSDs)"
+start_cluster 12
+run_config 8 3
 
 # =============================================================================
 banner "RESULTS"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ec_recovery_compare.sh
 # Compare EC recovery throughput: TwoTone vs Jerasure-RS vs ISA-L
-# across k,m = (3,2), (4,2), (6,3)
+# across k,m = (6,2), (6,3), (8,3)
 #
 # Run from /root/ceph/build
 set -uo pipefail
@@ -169,19 +169,11 @@ run_recovery_test() {
 # =============================================================================
 
 # ─────────────────────────────────────────────────────────────────────────────
-banner "k=3 m=2  (6 OSDs)"
-start_cluster 6
+banner "k=6 m=2  (10 OSDs)"
+start_cluster 10
 for plugin_label in "twotone:twotone" "jerasure:jerasure-rs" "isa:isa-l"; do
     plugin=${plugin_label%%:*}; label=${plugin_label##*:}
-    run_recovery_test "$plugin" 3 2 "$label"
-done
-
-# ─────────────────────────────────────────────────────────────────────────────
-banner "k=4 m=2  (8 OSDs)"
-start_cluster 8
-for plugin_label in "twotone:twotone" "jerasure:jerasure-rs" "isa:isa-l"; do
-    plugin=${plugin_label%%:*}; label=${plugin_label##*:}
-    run_recovery_test "$plugin" 4 2 "$label"
+    run_recovery_test "$plugin" 6 2 "$label"
 done
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -190,6 +182,14 @@ start_cluster 10
 for plugin_label in "twotone:twotone" "jerasure:jerasure-rs" "isa:isa-l"; do
     plugin=${plugin_label%%:*}; label=${plugin_label##*:}
     run_recovery_test "$plugin" 6 3 "$label"
+done
+
+# ─────────────────────────────────────────────────────────────────────────────
+banner "k=8 m=3  (12 OSDs)"
+start_cluster 12
+for plugin_label in "twotone:twotone" "jerasure:jerasure-rs" "isa:isa-l"; do
+    plugin=${plugin_label%%:*}; label=${plugin_label##*:}
+    run_recovery_test "$plugin" 8 3 "$label"
 done
 
 # =============================================================================
