@@ -1,3 +1,6 @@
+# Graduation Thesis
+[Thesis-Implementation-of-Ceph-Twotone-Codes.pdf](https://github.com/Antel0p3/ceph/blob/squid_twotone/Thesis-Implementation-of-Ceph-Twotone-Codes.pdf)
+
 # Ceph - a scalable distributed storage system
 
 See https://ceph.com/ for current information about Ceph.
