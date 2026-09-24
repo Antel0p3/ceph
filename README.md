@@ -4,8 +4,7 @@
 
 This repository is based on Ceph and contains my implementation, optimization, and integration work for TwoTone erasure coding, based on the [Two-tone Shift-XOR Storage Codes paper](https://guoyuanxinkevin.github.io/two_tone.pdf). The plugin can encode data into parity chunks and reconstruct missing chunks through Ceph's erasure-code interface.
 
-[Read the thesis]
-(Thesis-Implementation-of-Ceph-Twotone-Codes.pdf) · [Browse the implementation](src/erasure-code/twotone/) · [See the tests](src/test/erasure-code/TestErasureCodeTwotone.cc)
+[Read the thesis](Thesis-Implementation-of-Ceph-Twotone-Codes.pdf) · [Browse the implementation](src/erasure-code/twotone/) · [See the tests](src/test/erasure-code/TestErasureCodeTwotone.cc)
 
 example for 3 data chunks and 3 parity chunks:
 ![TwoTone data and parity layout](assets/twotone-layout.svg)
