@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="420" viewBox="0 0 1100 420" role="img" aria-labelledby="title desc">
+  <title id="title">Conceptual TwoTone erasure coding layout</title>
+  <desc id="desc">Three data chunks feed three parity chunks through shifted XOR relationships. The diagram is conceptual and does not show the full code matrix.</desc>
+  <defs>
+    <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#101d33"/><stop offset="1" stop-color="#172b45"/></linearGradient>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 8 4 0 8Z" fill="#90a9c6"/></marker>
+    <style>
+      text{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#eef5ff}.small{font-size:14px;fill:#b7c7dc}.label{font-size:16px;font-weight:650}.title{font-size:25px;font-weight:700}.cell{stroke:#ffffff26;stroke-width:1}
+    </style>
+  </defs>
+  <rect width="1100" height="420" rx="24" fill="url(#bg)"/>
+  <text x="48" y="54" class="title">TwoTone erasure coding · conceptual view</text>
+  <text x="48" y="82" class="small">Data is split into k chunks; shifted XOR relationships produce parity for recovery.</text>
+  <text x="72" y="133" class="label">DATA</text>
+  <text x="772" y="133" class="label">PARITY</text>
+  <g class="small" text-anchor="middle">
+    <text x="70" y="176">cell</text><text x="70" y="222">cell</text><text x="70" y="268">cell</text><text x="70" y="314">cell</text>
+  </g>
+  <g>
+    <rect x="102" y="151" width="165" height="184" rx="12" fill="#2467a8" stroke="#79baff"/>
+    <rect x="278" y="151" width="165" height="184" rx="12" fill="#2467a8" stroke="#79baff"/>
+    <rect x="454" y="151" width="165" height="184" rx="12" fill="#2467a8" stroke="#79baff"/>
+    <g fill="#ffffff18" class="cell">
+      <path d="M102 197h165v46H102zM102 243h165v46H102zM102 289h165v46H102z"/>
+      <path d="M278 197h165v46H278zM278 243h165v46H278zM278 289h165v46H278z"/>
+      <path d="M454 197h165v46H454zM454 243h165v46H454zM454 289h165v46H454z"/>
+    </g>
+    <g text-anchor="middle" class="label"><text x="184" y="179">D₀</text><text x="360" y="179">D₁</text><text x="536" y="179">D₂</text></g>
+    <g text-anchor="middle" class="small"><text x="184" y="226">x₀</text><text x="360" y="226">x₁</text><text x="536" y="226">x₂</text><text x="184" y="272">x₃</text><text x="360" y="272">x₄</text><text x="536" y="272">x₅</text><text x="184" y="318">…</text><text x="360" y="318">…</text><text x="536" y="318">…</text></g>
+  </g>
+  <g>
+    <rect x="766" y="151" width="92" height="184" rx="12" fill="#8a5b17" stroke="#ffd27a"/>
+    <rect x="866" y="151" width="92" height="184" rx="12" fill="#8a5b17" stroke="#ffd27a"/>
+    <rect x="966" y="151" width="92" height="184" rx="12" fill="#8a5b17" stroke="#ffd27a"/>
+    <g fill="#ffffff18" class="cell"><path d="M766 197h92v46h-92zM766 243h92v46h-92zM766 289h92v46h-92z"/><path d="M866 197h92v46h-92zM866 243h92v46h-92zM866 289h92v46h-92z"/><path d="M966 197h92v46h-92zM966 243h92v46h-92zM966 289h92v46h-92z"/></g>
+    <g text-anchor="middle" class="label"><text x="812" y="179">P₀</text><text x="912" y="179">P₁</text><text x="1012" y="179">P₂</text></g>
+    <g text-anchor="middle" class="small"><text x="812" y="226">⊕</text><text x="912" y="226">⊕</text><text x="1012" y="226">⊕</text><text x="812" y="272">⊕</text><text x="912" y="272">⊕</text><text x="1012" y="272">⊕</text><text x="812" y="318">⊕</text><text x="912" y="318">⊕</text><text x="1012" y="318">⊕</text></g>
+  </g>
+  <g fill="none" stroke="#90a9c6" stroke-width="2" marker-end="url(#arrow)" opacity=".85">
+    <path d="M620 175 C680 175 700 185 760 205"/><path d="M620 235 C690 235 700 235 760 235"/><path d="M620 305 C680 305 700 285 760 270"/>
+  </g>
+  <text x="48" y="382" class="small">Illustrative only · each parity chunk combines data cells with code-defined shifts.</text>
+</svg>

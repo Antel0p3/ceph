@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="570" viewBox="0 0 1100 570" role="img" aria-labelledby="title desc">
+  <title id="title">Average Ceph OSD recovery bandwidth comparison</title>
+  <desc id="desc">Grouped horizontal bars show average recovery bandwidth in megabytes per second. For k6 m2, TwoTone is 236, Jerasure Reed Solomon 162, and ISA-L 187. For k6 m3: 123, 80, and 119. For k8 m3: 124, 82, and 119. TwoTone leads all configurations.</desc>
+  <defs>
+    <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#101d33"/><stop offset="1" stop-color="#172b45"/></linearGradient>
+    <style>
+      text{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#eef5ff}.muted{font-size:14px;fill:#b7c7dc}.axis{font-size:12px;fill:#9fb1c8}.heading{font-size:17px;font-weight:650}.value{font-size:13px;font-weight:650}.note{font-size:13px;fill:#c1d0e2}
+    </style>
+  </defs>
+  <rect width="1100" height="570" rx="24" fill="url(#bg)"/>
+  <text x="42" y="48" font-size="24" font-weight="700">Average OSD recovery bandwidth</text>
+  <text x="42" y="74" class="muted">4 MB objects · Ceph cluster failure recovery · MB/s</text>
+
+  <g class="muted">
+    <rect x="620" y="35" width="13" height="13" rx="3" fill="#4fd1a1"/><text x="641" y="47">TwoTone</text>
+    <rect x="744" y="35" width="13" height="13" rx="3" fill="#f3a64a"/><text x="765" y="47">Jerasure RS</text>
+    <rect x="892" y="35" width="13" height="13" rx="3" fill="#78a9ff"/><text x="913" y="47">ISA-L</text>
+  </g>
+
+  <g stroke="#ffffff19" stroke-width="1">
+    <path d="M180 117V438M340 117V438M500 117V438M660 117V438M820 117V438"/>
+  </g>
+  <g class="axis" text-anchor="middle">
+    <text x="180" y="105">0</text><text x="340" y="105">50</text><text x="500" y="105">100</text><text x="660" y="105">150</text><text x="820" y="105">200</text>
+  </g>
+
+  <g class="heading"><text x="42" y="160">k=6, m=2</text><text x="42" y="270">k=6, m=3</text><text x="42" y="380">k=8, m=3</text></g>
+  <!-- Scale: 3.2 px per MB/s, starting at x=180. -->
+  <g>
+    <rect x="180" y="132" width="755.2" height="22" rx="6" fill="#4fd1a1"/><text x="945" y="148" class="value">236</text>
+    <rect x="180" y="159" width="518.4" height="22" rx="6" fill="#f3a64a"/><text x="708" y="175" class="value">162</text>
+    <rect x="180" y="186" width="598.4" height="22" rx="6" fill="#78a9ff"/><text x="788" y="202" class="value">187</text>
+
+    <rect x="180" y="242" width="393.6" height="22" rx="6" fill="#4fd1a1"/><text x="584" y="258" class="value">123</text>
+    <rect x="180" y="269" width="256" height="22" rx="6" fill="#f3a64a"/><text x="446" y="285" class="value">80</text>
+    <rect x="180" y="296" width="380.8" height="22" rx="6" fill="#78a9ff"/><text x="571" y="312" class="value">119</text>
+
+    <rect x="180" y="352" width="396.8" height="22" rx="6" fill="#4fd1a1"/><text x="584" y="368" class="value">124</text>
+    <rect x="180" y="379" width="262.4" height="22" rx="6" fill="#f3a64a"/><text x="450" y="395" class="value">82</text>
+    <rect x="180" y="406" width="380.8" height="22" rx="6" fill="#78a9ff"/><text x="571" y="422" class="value">119</text>
+  </g>
+
+  <g class="note">
+    <text x="42" y="477">TwoTone vs Jerasure RS</text>
+    <text x="42" y="501" font-size="20" font-weight="700" fill="#4fd1a1">+45.7%</text><text x="111" y="501"> at k=6,m=2</text>
+    <text x="300" y="501" font-size="20" font-weight="700" fill="#4fd1a1">+53.8%</text><text x="369" y="501"> at k=6,m=3</text>
+    <text x="558" y="501" font-size="20" font-weight="700" fill="#4fd1a1">+51.2%</text><text x="627" y="501"> at k=8,m=3</text>
+  </g>
+  <text x="42" y="542" class="muted">Source: thesis, Table 4-4 · Ubuntu 24.04 · Ceph Squid · BlueStore · AVX2-capable x86_64</text>
+</svg>

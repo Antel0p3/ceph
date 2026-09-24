@@ -1,281 +1,62 @@
-# Graduation Thesis
-[Thesis-Implementation-of-Ceph-Twotone-Codes.pdf](https://github.com/Antel0p3/ceph/blob/squid_twotone/Thesis-Implementation-of-Ceph-Twotone-Codes.pdf)
+# TwoTone Erasure Coding in Ceph
 
-# Ceph - a scalable distributed storage system
+**An implementation of the TwoTone erasure code as a native Ceph storage plugin.**
 
-See https://ceph.com/ for current information about Ceph.
+This repository is based on Ceph and contains my implementation, optimization, and integration work for TwoTone erasure coding, based on the [Two-tone Shift-XOR Storage Codes paper](https://guoyuanxinkevin.github.io/two_tone.pdf). The plugin can encode data into parity chunks and reconstruct missing chunks through Ceph's erasure-code interface.
 
+[Read the thesis](Thesis-Implementation-of-Ceph-Twotone-Codes.pdf) · [Browse the implementation](src/erasure-code/twotone/) · [See the tests](src/test/erasure-code/TestErasureCodeTwotone.cc)
 
-## Contributing Code
+![TwoTone data and parity layout](assets/twotone-layout.svg)
 
-Most of Ceph is dual-licensed under the LGPL version 2.1 or 3.0. Some
-miscellaneous code is either public domain or licensed under a BSD-style
-license.
+## Outperforming Established Ceph EC Plugins
 
-The Ceph documentation is licensed under Creative Commons Attribution Share
-Alike 3.0 (CC-BY-SA-3.0). 
+This work targets Ceph Squid, where Jerasure Reed–Solomon is the default erasure-code plugin ([Squid profile docs](https://docs.ceph.com/en/squid/rados/operations/erasure-code-profile/)). Current Ceph Tentacle releases use ISA-L as the default for new erasure-coded pools ([release notes](https://docs.ceph.com/en/latest/releases/tentacle/)); it is a strong performance baseline. In the thesis's cluster-level OSD failure tests with 4 MB objects, TwoTone delivered **45.7%–53.8% higher average recovery bandwidth than Jerasure Reed–Solomon** across three configurations and edged out ISA-L in all three.
 
-Some headers included in the `ceph/ceph` repository are licensed under the GPL.
-See the file `COPYING` for a full inventory of licenses by file.
+![Average OSD recovery bandwidth for TwoTone, Jerasure RS, and ISA-L across three k/m configurations](assets/twotone-recovery-throughput.svg)
 
-All code contributions must include a valid "Signed-off-by" line. See the file
-`SubmittingPatches.rst` for details on this and instructions on how to generate
-and submit patches.
+These are system recovery results, not codec-only microbenchmarks. The thesis reports a Ceph Squid development build on Ubuntu 24.04 with BlueStore and AVX2; the cluster used 10 OSDs for `k=6` tests and 12 OSDs for `k=8,m=3`. See the [thesis evaluation](Thesis-Implementation-of-Ceph-Twotone-Codes.pdf) for the methodology and full results.
 
-Assignment of copyright is not required to contribute code. Code is
-contributed under the terms of the applicable license.
+## What I built
 
+- **Ceph erasure-code plugin:** Added the `twotone` plugin, its profile parsing, chunk sizing, encoding, and decoding paths, and registered it in the Ceph build.
+- **TwoTone layout and recovery:** Implemented the shifted XOR layout and recovery planning for supported `k` and `m` configurations. The implementation validates that `m` does not exceed `k`.
+- **Encoding performance work:** Added SIMD-aware XOR routines with AVX2 and SSE2 paths and a portable fallback. The implementation also reuses scratch space and plans recovery operations to reduce repeated work.
+- **Correctness coverage:** Added tests that encode and reconstruct missing chunks for multiple configurations, including checks against the original data and parity.
+- **Cluster-level exercise script:** Added `twotone_robustness.sh` to exercise object writes, reads, benchmark smoke checks, and recovery after an OSD failure in a local Ceph cluster.
 
-## Checking out the source
+## Why this work matters
 
-Clone the ceph/ceph repository from github by running the following command on
-a system that has git installed:
+Erasure coding can reduce storage overhead compared with keeping full replicas, while adding computation and recovery complexity. This project explores how a TwoTone code can be implemented within Ceph's existing erasure-code architecture and exercised through both unit-level and cluster-level workflows.
 
-	git clone git@github.com:ceph/ceph
+The repository includes the thesis for the algorithm background, design choices, and evaluation. Performance depends on the hardware, build options, and benchmark setup; see the paper for the measured results and methodology.
 
-Alternatively, if you are not a github user, you should run the following
-command on a system that has git installed:
+## Source map
 
-	git clone https://github.com/ceph/ceph.git
+| Area | Location |
+| --- | --- |
+| Thesis and evaluation | [`Thesis-Implementation-of-Ceph-Twotone-Codes.pdf`](Thesis-Implementation-of-Ceph-Twotone-Codes.pdf) |
+| Ceph plugin implementation | [`src/erasure-code/twotone/`](src/erasure-code/twotone/) |
+| Unit tests | [`src/test/erasure-code/TestErasureCodeTwotone.cc`](src/test/erasure-code/TestErasureCodeTwotone.cc) |
+| Cluster robustness workflow | [`twotone_robustness.sh`](twotone_robustness.sh) |
 
-When the `ceph/ceph` repository has been cloned to your system, run the
-following commands to move into the cloned `ceph/ceph` repository and to check
-out the git submodules associated with it:
+## Build and run
 
-    cd ceph
-	git submodule update --init --recursive --progress
+The commands below assume a configured Ceph development build. Ceph's full build prerequisites are documented in the [upstream Ceph README](https://github.com/ceph/ceph#building-ceph).
 
+Build the plugin and its unit test from the build directory:
 
-## Build Prerequisites
+```sh
+ninja ec_twotone unittest_erasure_code_twotone
+```
 
-*section last updated 06 Sep 2024*
+Run the unit test:
 
-We provide the Debian and Ubuntu ``apt`` commands in this procedure. If you use
-a system with a different package manager, then you will have to use different
-commands. 
+```sh
+./bin/unittest_erasure_code_twotone
+```
 
-#. Install ``curl``:
+The cluster workflow is provided in [`twotone_robustness.sh`](twotone_robustness.sh). It starts a local `vstart` cluster and exercises object I/O and recovery; its comments describe the expected cluster setup.
 
-    apt install curl
+## Acknowledgements
 
-#. Install package dependencies by running the ``install-deps.sh`` script:
-
-	./install-deps.sh
-
-#. Install the ``python3-routes`` package:
-
-    apt install python3-routes
-
-
-## Building Ceph
-
-These instructions are meant for developers who are compiling the code for
-development and testing. To build binaries that are suitable for installation
-we recommend that you build `.deb` or `.rpm` packages, or refer to
-``ceph.spec.in`` or ``debian/rules`` to see which configuration options are
-specified for production builds.
-
-To build Ceph, follow this procedure: 
-
-1. Make sure that you are in the top-level `ceph` directory that
-   contains `do_cmake.sh` and `CONTRIBUTING.rst`.
-2. Run the `do_cmake.sh` script:
-
-       ./do_cmake.sh
-
-   ``do_cmake.sh`` by default creates a "debug build" of Ceph, which can be 
-   up to five times slower than a non-debug build. Pass 
-   ``-DCMAKE_BUILD_TYPE=RelWithDebInfo`` to ``do_cmake.sh`` to create a 
-   non-debug build.
-3. Move into the `build` directory:
-
-       cd build
-4. Use the `ninja` buildsystem to build the development environment:
-
-       ninja -j3
-
-   > [IMPORTANT]
-   >
-   > [Ninja](https://ninja-build.org/) is the build system used by the Ceph
-   > project to build test builds.  The number of jobs used by `ninja` is 
-   > derived from the number of CPU cores of the building host if unspecified. 
-   > Use the `-j` option to limit the job number if build jobs are running 
-   > out of memory. If you attempt to run `ninja` and receive a message that 
-   > reads `g++: fatal error: Killed signal terminated program cc1plus`, then 
-   > you have run out of memory.
-   >
-   > Using the `-j` option with an argument appropriate to the hardware on
-   > which the `ninja` command is run is expected to result in a successful
-   > build. For example, to limit the job number to 3, run the command `ninja
-   > -j3`. On average, each `ninja` job run in parallel needs approximately
-   > 2.5 GiB of RAM.
-
-   This documentation assumes that your build directory is a subdirectory of
-   the `ceph.git` checkout. If the build directory is located elsewhere, point
-   `CEPH_GIT_DIR` to the correct path of the checkout. Additional CMake args 
-   can be specified by setting ARGS before invoking ``do_cmake.sh``. 
-   See [cmake options](#cmake-options) for more details. For example:
-
-       ARGS="-DCMAKE_C_COMPILER=gcc-7" ./do_cmake.sh
-
-   To build only certain targets, run a command of the following form:
-
-       ninja [target name]
-
-5. Install the vstart cluster:
-
-       ninja install
- 
-### CMake Options
-
-The `-D` flag can be used with `cmake` to speed up the process of building Ceph
-and to customize the build.
-
-#### Building without RADOS Gateway
-
-The RADOS Gateway is built by default. To build Ceph without the RADOS Gateway,
-run a command of the following form:
-
-	cmake -DWITH_RADOSGW=OFF [path to top-level ceph directory]
-
-#### Building with debugging and arbitrary dependency locations 
-
-Run a command of the following form to build Ceph with debugging and alternate
-locations for some external dependencies:
-
-	cmake -DCMAKE_INSTALL_PREFIX=/opt/ceph -DCMAKE_C_FLAGS="-Og -g3 -gdwarf-4" \
-	..
-
-Ceph has several bundled dependencies such as Boost, RocksDB and Arrow. By
-default, `cmake` builds these bundled dependencies from source instead of using
-libraries that are already installed on the system. You can opt to use these
-system libraries, as long as they meet Ceph's version requirements. To use
-system libraries, use `cmake` options like `WITH_SYSTEM_BOOST`, as in the
-following example:
-
-	cmake -DWITH_SYSTEM_BOOST=ON [...]
-
-To view an exhaustive list of -D options, invoke `cmake -LH`:
-
-	cmake -LH
-
-#### Preserving diagnostic colors
-
-If you pipe `ninja` to `less` and would like to preserve the diagnostic colors
-in the output in order to make errors and warnings more legible, run the
-following command:  
-
-	cmake -DDIAGNOSTICS_COLOR=always ...
-
-The above command works only with supported compilers.
-
-The diagnostic colors will be visible when the following command is run: 
-
-	ninja | less -R
-
-Other available values for `DIAGNOSTICS_COLOR` are `auto` (default) and
-`never`.
-
-
-## Building a source tarball
-
-To build a complete source tarball with everything needed to build from
-source and/or build a (deb or rpm) package, run
-
-	./make-dist
-
-This will create a tarball like ceph-$version.tar.bz2 from git.
-(Ensure that any changes you want to include in your working directory
-are committed to git.)
-
-
-## Running a test cluster
-
-From the `ceph/` directory, run the following commands to launch a test Ceph
-cluster:
-
-	cd build
-	ninja vstart        # builds just enough to run vstart
-	ninja ec_twotone unittest_erasure_code_twotone ceph_erasure_code_benchmark ec_jerasure ec_isa
-    ../src/vstart.sh --debug --new -x --localhost --bluestore
-	./bin/ceph -s
-
-Most Ceph commands are available in the `bin/` directory. For example:
-
-	./bin/rbd create foo --size 1000
-	./bin/rados -p foo bench 30 write
-
-To shut down the test cluster, run the following command from the `build/`
-directory:
-
-	../src/stop.sh
-
-Use the sysvinit script to start or stop individual daemons: 
-
-	./bin/init-ceph restart osd.0
-	./bin/init-ceph stop
-
-
-## Running unit tests
-
-To build and run all tests (in parallel using all processors), use `ctest`:
-
-	cd build
-	ninja
-	ctest -j$(nproc)
-
-(Note: Many targets built from src/test are not run using `ctest`.
-Targets starting with "unittest" are run in `ninja check` and thus can
-be run with `ctest`. Targets starting with "ceph_test" can not, and should
-be run by hand.)
-
-When failures occur, look in build/Testing/Temporary for logs.
-
-To build and run all tests and their dependencies without other
-unnecessary targets in Ceph:
-
-	cd build
-	ninja check -j$(nproc)
-
-To run an individual test manually, run `ctest` with -R (regex matching):
-
-	ctest -R [regex matching test name(s)]
-
-(Note: `ctest` does not build the test it's running or the dependencies needed
-to run it)
-
-To run an individual test manually and see all the tests output, run
-`ctest` with the -V (verbose) flag:
-
-	ctest -V -R [regex matching test name(s)]
-
-To run tests manually and run the jobs in parallel, run `ctest` with 
-the `-j` flag:
-
-	ctest -j [number of jobs]
-
-There are many other flags you can give `ctest` for better control
-over manual test execution. To view these options run:
-
-	man ctest
-
-
-## Building the Documentation
-
-### Prerequisites
-
-The list of package dependencies for building the documentation can be
-found in `doc_deps.deb.txt`:
-
-	sudo apt-get install `cat doc_deps.deb.txt`
-
-### Building the Documentation
-
-To build the documentation, ensure that you are in the top-level
-`/ceph` directory, and execute the build script. For example:
-
-	admin/build-doc
-
-## Reporting Issues
-
-To report an issue and view existing issues, please visit https://tracker.ceph.com/projects/ceph.
+Ceph is an open-source distributed storage system. This repository is a research and thesis implementation built on the Ceph codebase; refer to the repository's [`COPYING`](COPYING) file for licensing details.
