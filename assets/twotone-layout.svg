@@ -1,43 +1,62 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="420" viewBox="0 0 1100 420" role="img" aria-labelledby="title desc">
-  <title id="title">Conceptual TwoTone erasure coding layout</title>
-  <desc id="desc">Three data chunks feed three parity chunks through shifted XOR relationships. The diagram is conceptual and does not show the full code matrix.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="470" viewBox="0 0 1100 470" role="img" aria-labelledby="title desc">
+  <title id="title">TwoTone parity-specific shift patterns</title>
+  <desc id="desc">Three independent parity equations are shown. Parity p0 XORs D0 shifted by zero, D1 by one, and D2 by two. Parity p1 XORs all three data chunks with shift zero. Parity p3 XORs D0 shifted by two, D1 by one, and D2 by zero. Each row produces only its labeled parity chunk.</desc>
   <defs>
-    <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#101d33"/><stop offset="1" stop-color="#172b45"/></linearGradient>
-    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 8 4 0 8Z" fill="#90a9c6"/></marker>
+    <linearGradient id="background" x2="0" y2="1"><stop stop-color="#101d33"/><stop offset="1" stop-color="#172b45"/></linearGradient>
+    <linearGradient id="dataFill" x2="0" y2="1"><stop stop-color="#2878bd"/><stop offset="1" stop-color="#1d5b94"/></linearGradient>
+    <linearGradient id="parityFill" x2="0" y2="1"><stop stop-color="#d69432"/><stop offset="1" stop-color="#a96c1b"/></linearGradient>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0 9 4.5 0 9Z" fill="#b7c7dc"/></marker>
     <style>
-      text{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#eef5ff}.small{font-size:14px;fill:#b7c7dc}.label{font-size:16px;font-weight:650}.title{font-size:25px;font-weight:700}.cell{stroke:#ffffff26;stroke-width:1}
+      text{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#eef5ff}.muted{font-size:14px;fill:#b7c7dc}.title{font-size:25px;font-weight:700}.subtitle{font-size:14px;fill:#b7c7dc}.parity{font-size:16px;font-weight:700}.data{font-size:14px;font-weight:700}.offset{font-size:12px;font-weight:650;fill:#c8d6e7}.xor{font-size:22px;font-weight:700;fill:#e1eaf5}.header{font-size:12px;font-weight:700;letter-spacing:1px;fill:#b7c7dc}
     </style>
   </defs>
-  <rect width="1100" height="420" rx="24" fill="url(#bg)"/>
-  <text x="48" y="54" class="title">TwoTone erasure coding · conceptual view</text>
-  <text x="48" y="82" class="small">Data is split into k chunks; shifted XOR relationships produce parity for recovery.</text>
-  <text x="72" y="133" class="label">DATA</text>
-  <text x="772" y="133" class="label">PARITY</text>
-  <g class="small" text-anchor="middle">
-    <text x="70" y="176">cell</text><text x="70" y="222">cell</text><text x="70" y="268">cell</text><text x="70" y="314">cell</text>
-  </g>
+
+  <rect width="1100" height="470" rx="24" fill="url(#background)"/>
+  <text x="42" y="50" class="title">TwoTone parity-specific shifts</text>
+  <text x="42" y="78" class="subtitle">Each shift pattern forms one parity chunk; XORs do not mix across parity rows.</text>
+
+  <text x="70" y="126" class="header">OUTPUT</text>
+  <text x="240" y="126" class="header">DATA CONTRIBUTIONS AND THEIR SHIFTS</text>
+  <text x="934" y="126" class="header">RESULT</text>
+
+  <!-- p0 = shift(D0,0) XOR shift(D1,1) XOR shift(D2,2) -->
+  <rect x="42" y="145" width="1016" height="78" rx="13" fill="#ffffff08" stroke="#ffffff20"/>
+  <text x="69" y="191" class="parity">p₀</text>
   <g>
-    <rect x="102" y="151" width="165" height="184" rx="12" fill="#2467a8" stroke="#79baff"/>
-    <rect x="278" y="151" width="165" height="184" rx="12" fill="#2467a8" stroke="#79baff"/>
-    <rect x="454" y="151" width="165" height="184" rx="12" fill="#2467a8" stroke="#79baff"/>
-    <g fill="#ffffff18" class="cell">
-      <path d="M102 197h165v46H102zM102 243h165v46H102zM102 289h165v46H102z"/>
-      <path d="M278 197h165v46H278zM278 243h165v46H278zM278 289h165v46H278z"/>
-      <path d="M454 197h165v46H454zM454 243h165v46H454zM454 289h165v46H454z"/>
-    </g>
-    <g text-anchor="middle" class="label"><text x="184" y="179">D₀</text><text x="360" y="179">D₁</text><text x="536" y="179">D₂</text></g>
-    <g text-anchor="middle" class="small"><text x="184" y="226">x₀</text><text x="360" y="226">x₁</text><text x="536" y="226">x₂</text><text x="184" y="272">x₃</text><text x="360" y="272">x₄</text><text x="536" y="272">x₅</text><text x="184" y="318">…</text><text x="360" y="318">…</text><text x="536" y="318">…</text></g>
+    <rect x="205" y="159" width="174" height="50" rx="9" fill="url(#dataFill)" stroke="#8bc5f7"/><text x="292" y="181" text-anchor="middle" class="data">D₀</text><text x="292" y="199" text-anchor="middle" class="offset">shift 0</text>
+    <text x="394" y="191" text-anchor="middle" class="xor">⊕</text>
+    <rect x="411" y="159" width="174" height="50" rx="9" fill="url(#dataFill)" stroke="#8bc5f7"/><text x="498" y="181" text-anchor="middle" class="data">D₁</text><text x="498" y="199" text-anchor="middle" class="offset">shift 1</text>
+    <text x="600" y="191" text-anchor="middle" class="xor">⊕</text>
+    <rect x="617" y="159" width="174" height="50" rx="9" fill="url(#dataFill)" stroke="#8bc5f7"/><text x="704" y="181" text-anchor="middle" class="data">D₂</text><text x="704" y="199" text-anchor="middle" class="offset">shift 2</text>
+    <path d="M806 184H895" fill="none" stroke="#b7c7dc" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="914" y="159" width="112" height="50" rx="9" fill="url(#parityFill)" stroke="#ffd27a"/><text x="970" y="190" text-anchor="middle" class="data">P₀</text>
   </g>
+
+  <!-- p1 = shift(D0,0) XOR shift(D1,0) XOR shift(D2,0) -->
+  <rect x="42" y="235" width="1016" height="78" rx="13" fill="#ffffff08" stroke="#ffffff20"/>
+  <text x="69" y="281" class="parity">p₁</text>
   <g>
-    <rect x="766" y="151" width="92" height="184" rx="12" fill="#8a5b17" stroke="#ffd27a"/>
-    <rect x="866" y="151" width="92" height="184" rx="12" fill="#8a5b17" stroke="#ffd27a"/>
-    <rect x="966" y="151" width="92" height="184" rx="12" fill="#8a5b17" stroke="#ffd27a"/>
-    <g fill="#ffffff18" class="cell"><path d="M766 197h92v46h-92zM766 243h92v46h-92zM766 289h92v46h-92z"/><path d="M866 197h92v46h-92zM866 243h92v46h-92zM866 289h92v46h-92z"/><path d="M966 197h92v46h-92zM966 243h92v46h-92zM966 289h92v46h-92z"/></g>
-    <g text-anchor="middle" class="label"><text x="812" y="179">P₀</text><text x="912" y="179">P₁</text><text x="1012" y="179">P₂</text></g>
-    <g text-anchor="middle" class="small"><text x="812" y="226">⊕</text><text x="912" y="226">⊕</text><text x="1012" y="226">⊕</text><text x="812" y="272">⊕</text><text x="912" y="272">⊕</text><text x="1012" y="272">⊕</text><text x="812" y="318">⊕</text><text x="912" y="318">⊕</text><text x="1012" y="318">⊕</text></g>
+    <rect x="205" y="249" width="174" height="50" rx="9" fill="url(#dataFill)" stroke="#8bc5f7"/><text x="292" y="271" text-anchor="middle" class="data">D₀</text><text x="292" y="289" text-anchor="middle" class="offset">shift 0</text>
+    <text x="394" y="281" text-anchor="middle" class="xor">⊕</text>
+    <rect x="411" y="249" width="174" height="50" rx="9" fill="url(#dataFill)" stroke="#8bc5f7"/><text x="498" y="271" text-anchor="middle" class="data">D₁</text><text x="498" y="289" text-anchor="middle" class="offset">shift 0</text>
+    <text x="600" y="281" text-anchor="middle" class="xor">⊕</text>
+    <rect x="617" y="249" width="174" height="50" rx="9" fill="url(#dataFill)" stroke="#8bc5f7"/><text x="704" y="271" text-anchor="middle" class="data">D₂</text><text x="704" y="289" text-anchor="middle" class="offset">shift 0</text>
+    <path d="M806 274H895" fill="none" stroke="#b7c7dc" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="914" y="249" width="112" height="50" rx="9" fill="url(#parityFill)" stroke="#ffd27a"/><text x="970" y="280" text-anchor="middle" class="data">P₁</text>
   </g>
-  <g fill="none" stroke="#90a9c6" stroke-width="2" marker-end="url(#arrow)" opacity=".85">
-    <path d="M620 175 C680 175 700 185 760 205"/><path d="M620 235 C690 235 700 235 760 235"/><path d="M620 305 C680 305 700 285 760 270"/>
+
+  <!-- p3 = shift(D0,2) XOR shift(D1,1) XOR shift(D2,0) -->
+  <rect x="42" y="325" width="1016" height="78" rx="13" fill="#ffffff08" stroke="#ffffff20"/>
+  <text x="69" y="371" class="parity">p₃</text>
+  <g>
+    <rect x="205" y="339" width="174" height="50" rx="9" fill="url(#dataFill)" stroke="#8bc5f7"/><text x="292" y="361" text-anchor="middle" class="data">D₀</text><text x="292" y="379" text-anchor="middle" class="offset">shift 2</text>
+    <text x="394" y="371" text-anchor="middle" class="xor">⊕</text>
+    <rect x="411" y="339" width="174" height="50" rx="9" fill="url(#dataFill)" stroke="#8bc5f7"/><text x="498" y="361" text-anchor="middle" class="data">D₁</text><text x="498" y="379" text-anchor="middle" class="offset">shift 1</text>
+    <text x="600" y="371" text-anchor="middle" class="xor">⊕</text>
+    <rect x="617" y="339" width="174" height="50" rx="9" fill="url(#dataFill)" stroke="#8bc5f7"/><text x="704" y="361" text-anchor="middle" class="data">D₂</text><text x="704" y="379" text-anchor="middle" class="offset">shift 0</text>
+    <path d="M806 364H895" fill="none" stroke="#b7c7dc" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="914" y="339" width="112" height="50" rx="9" fill="url(#parityFill)" stroke="#ffd27a"/><text x="970" y="370" text-anchor="middle" class="data">P₃</text>
   </g>
-  <text x="48" y="382" class="small">Illustrative only · each parity chunk combines data cells with code-defined shifts.</text>
+
+  <text x="42" y="438" class="muted">Examples from the code layout; other parity rows are omitted for clarity.</text>
 </svg>

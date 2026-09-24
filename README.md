@@ -4,17 +4,31 @@
 
 This repository is based on Ceph and contains my implementation, optimization, and integration work for TwoTone erasure coding, based on the [Two-tone Shift-XOR Storage Codes paper](https://guoyuanxinkevin.github.io/two_tone.pdf). The plugin can encode data into parity chunks and reconstruct missing chunks through Ceph's erasure-code interface.
 
-[Read the thesis](Thesis-Implementation-of-Ceph-Twotone-Codes.pdf) · [Browse the implementation](src/erasure-code/twotone/) · [See the tests](src/test/erasure-code/TestErasureCodeTwotone.cc)
+[Read the thesis]
+(Thesis-Implementation-of-Ceph-Twotone-Codes.pdf) · [Browse the implementation](src/erasure-code/twotone/) · [See the tests](src/test/erasure-code/TestErasureCodeTwotone.cc)
 
+example for 3 data chunks and 3 parity chunks:
 ![TwoTone data and parity layout](assets/twotone-layout.svg)
 
 ## Outperforming Established Ceph EC Plugins
 
-This work targets Ceph Squid, where Jerasure Reed–Solomon is the default erasure-code plugin ([Squid profile docs](https://docs.ceph.com/en/squid/rados/operations/erasure-code-profile/)). Current Ceph Tentacle releases use ISA-L as the default for new erasure-coded pools ([release notes](https://docs.ceph.com/en/latest/releases/tentacle/)); it is a strong performance baseline. In the thesis's cluster-level OSD failure tests with 4 MB objects, TwoTone delivered **45.7%–53.8% higher average recovery bandwidth than Jerasure Reed–Solomon** across three configurations and edged out ISA-L in all three.
+This work targets Ceph Squid, where Jerasure Reed–Solomon is the default erasure-code plugin ([Squid profile docs](https://docs.ceph.com/en/squid/rados/operations/erasure-code-profile/)). Current Ceph Tentacle releases use ISA-L as the default for new erasure-coded pools ([release notes](https://docs.ceph.com/en/latest/releases/tentacle/)); it is a strong performance baseline.
+
+### Codec microbenchmarks
+
+In the thesis's in-memory tests with 2 MB chunks, TwoTone also led the encoding and decoding comparisons. It was **9.1×–10.5× faster than Jerasure RS in encoding** and **7.5×–7.8× faster in decoding**. Against ISA-L, it was **31.0%–37.4% faster in encoding** and **8.9%–13.3% faster in decoding**. The chart shows throughput for each plugin and configuration.
+
+![Encoding and decoding throughput for TwoTone, Jerasure RS, and ISA-L in in-memory codec benchmarks](assets/twotone-codec-throughput.svg)
+
+The thesis measured encoding over 200 iterations and averaged decoding across all possible single-chunk loss cases. These are codec-level measurements, separate from cluster I/O and recovery.
+
+### OSD recovery in a Ceph cluster
+
+In the thesis's cluster-level OSD failure tests with 4 MB objects, TwoTone delivered **45.7%–53.8% higher average recovery bandwidth than Jerasure Reed–Solomon** across three configurations and edged out ISA-L in all three.
 
 ![Average OSD recovery bandwidth for TwoTone, Jerasure RS, and ISA-L across three k/m configurations](assets/twotone-recovery-throughput.svg)
 
-These are system recovery results, not codec-only microbenchmarks. The thesis reports a Ceph Squid development build on Ubuntu 24.04 with BlueStore and AVX2; the cluster used 10 OSDs for `k=6` tests and 12 OSDs for `k=8,m=3`. See the [thesis evaluation](Thesis-Implementation-of-Ceph-Twotone-Codes.pdf) for the methodology and full results.
+These are system-level recovery results, not codec-only throughput. The thesis reports tests on Ubuntu 24.04 with a Ceph Squid development build, BlueStore, and an AVX2-capable x86_64 server; the cluster used 10 OSDs for `k=6` tests and 12 OSDs for `k=8,m=3`. See the [thesis evaluation](Thesis-Implementation-of-Ceph-Twotone-Codes.pdf) for full methodology and results.
 
 ## What I built
 

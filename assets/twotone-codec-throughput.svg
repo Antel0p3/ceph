@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="560" viewBox="0 0 1100 560" role="img" aria-labelledby="title desc">
+  <title id="title">TwoTone encoding and decoding throughput comparison</title>
+  <desc id="desc">In-memory throughput in gigabytes per second for k6 m2, k6 m3, and k8 m3 configurations. Encoding: TwoTone 11.49, 7.75, 7.60; Jerasure Reed Solomon 1.26, 0.74, 0.74; ISA-L 8.36, 5.79, 5.80. Decoding: TwoTone 17.89, 13.67, 13.23; Jerasure Reed Solomon 2.30, 1.83, 1.73; ISA-L 15.94, 12.06, 12.15.</desc>
+  <defs>
+    <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#101d33"/><stop offset="1" stop-color="#172b45"/></linearGradient>
+    <style>
+      text{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#eef5ff}.muted{font-size:13px;fill:#b7c7dc}.axis{font-size:11px;fill:#9fb1c8}.heading{font-size:18px;font-weight:700}.config{font-size:13px;font-weight:650}.value{font-size:11px;font-weight:650}
+    </style>
+  </defs>
+  <rect width="1100" height="560" rx="24" fill="url(#bg)"/>
+  <text x="38" y="43" font-size="23" font-weight="700">Codec throughput · GB/s</text>
+  <g class="muted">
+    <rect x="490" y="29" width="12" height="12" rx="3" fill="#4fd1a1"/><text x="509" y="40">TwoTone</text>
+    <rect x="600" y="29" width="12" height="12" rx="3" fill="#f3a64a"/><text x="619" y="40">Jerasure RS</text>
+    <rect x="735" y="29" width="12" height="12" rx="3" fill="#78a9ff"/><text x="754" y="40">ISA-L</text>
+  </g>
+  <path d="M550 80V475" stroke="#ffffff24"/>
+  <text x="38" y="91" class="heading">Encoding</text>
+  <text x="588" y="91" class="heading">Decoding</text>
+
+  <!-- Encoding panel: x=125, 27.5 px per GB/s, max 12 GB/s. -->
+  <g stroke="#ffffff19" stroke-width="1">
+    <path d="M125 120V444M235 120V444M345 120V444M455 120V444"/>
+    <path d="M675 120V444M762.5 120V444M850 120V444M937.5 120V444M1025 120V444"/>
+  </g>
+  <g class="axis" text-anchor="middle">
+    <text x="125" y="112">0</text><text x="235" y="112">4</text><text x="345" y="112">8</text><text x="455" y="112">12</text>
+    <text x="675" y="112">0</text><text x="762.5" y="112">5</text><text x="850" y="112">10</text><text x="937.5" y="112">15</text><text x="1025" y="112">20</text>
+  </g>
+  <g class="config"><text x="38" y="173">k=6,m=2</text><text x="38" y="283">k=6,m=3</text><text x="38" y="393">k=8,m=3</text></g>
+  <g>
+    <!-- Encoding: two-tone / Jerasure RS / ISA-L -->
+    <rect x="125" y="140" width="315.975" height="18" rx="5" fill="#4fd1a1"/><text x="446" y="153" class="value">11.49</text>
+    <rect x="125" y="162" width="34.65" height="18" rx="5" fill="#f3a64a"/><text x="165" y="175" class="value">1.26</text>
+    <rect x="125" y="184" width="229.9" height="18" rx="5" fill="#78a9ff"/><text x="360" y="197" class="value">8.36</text>
+
+    <rect x="125" y="250" width="213.125" height="18" rx="5" fill="#4fd1a1"/><text x="343" y="263" class="value">7.75</text>
+    <rect x="125" y="272" width="20.35" height="18" rx="5" fill="#f3a64a"/><text x="151" y="285" class="value">0.74</text>
+    <rect x="125" y="294" width="159.225" height="18" rx="5" fill="#78a9ff"/><text x="290" y="307" class="value">5.79</text>
+
+    <rect x="125" y="360" width="209" height="18" rx="5" fill="#4fd1a1"/><text x="339" y="373" class="value">7.60</text>
+    <rect x="125" y="382" width="20.35" height="18" rx="5" fill="#f3a64a"/><text x="151" y="395" class="value">0.74</text>
+    <rect x="125" y="404" width="159.5" height="18" rx="5" fill="#78a9ff"/><text x="290" y="417" class="value">5.80</text>
+
+    <!-- Decoding: two-tone / Jerasure RS / ISA-L -->
+    <rect x="675" y="140" width="313.075" height="18" rx="5" fill="#4fd1a1"/><text x="994" y="153" class="value">17.89</text>
+    <rect x="675" y="162" width="40.25" height="18" rx="5" fill="#f3a64a"/><text x="721" y="175" class="value">2.30</text>
+    <rect x="675" y="184" width="278.95" height="18" rx="5" fill="#78a9ff"/><text x="960" y="197" class="value">15.94</text>
+
+    <rect x="675" y="250" width="239.225" height="18" rx="5" fill="#4fd1a1"/><text x="920" y="263" class="value">13.67</text>
+    <rect x="675" y="272" width="32.025" height="18" rx="5" fill="#f3a64a"/><text x="713" y="285" class="value">1.83</text>
+    <rect x="675" y="294" width="211.05" height="18" rx="5" fill="#78a9ff"/><text x="892" y="307" class="value">12.06</text>
+
+    <rect x="675" y="360" width="231.525" height="18" rx="5" fill="#4fd1a1"/><text x="912" y="373" class="value">13.23</text>
+    <rect x="675" y="382" width="30.275" height="18" rx="5" fill="#f3a64a"/><text x="711" y="395" class="value">1.73</text>
+    <rect x="675" y="404" width="212.625" height="18" rx="5" fill="#78a9ff"/><text x="893" y="417" class="value">12.15</text>
+  </g>
+  <text x="38" y="478" class="muted">2 MB chunks · encoding: 200 iterations · decoding: mean across single-chunk loss cases</text>
+  <text x="38" y="519" class="muted">Thesis Tables 4-2 and 4-3 · Ubuntu 24.04 · Ceph Squid · AVX2-capable x86_64</text>
+</svg>
